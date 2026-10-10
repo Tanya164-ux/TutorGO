@@ -562,6 +562,26 @@ function TutorDashboard({ profile, onLogout }) {
             }
         );
 
+        // Payment completed by a student: refresh this tutor's bookings immediately.
+        // The backend payment route emits this event to the tutor's registered socket.
+        socket.on(
+            "paymentConfirmed",
+            (paymentUpdate) => {
+                console.log(
+                    "Student payment confirmed:",
+                    paymentUpdate
+                );
+
+                setMessage(
+                    paymentUpdate?.message ||
+                    `Payment confirmed for booking #${paymentUpdate?.booking_id ?? ""}.`
+                );
+
+                // Re-fetch from MySQL so the dashboard reflects persisted status.
+                loadBookings();
+            }
+        );
+
         // Request status update
         socket.on(
             "requestStatusUpdated",

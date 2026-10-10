@@ -1,6 +1,7 @@
 
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { io } from "socket.io-client";
 
@@ -2253,7 +2254,8 @@ function StudentDashboard({ profile, onLogout }) {
                     top: "0",
                     left: "0",
                     right: "0",
-                    width: "100%",
+                    width: "100vw",
+                    maxWidth: "100vw",
                     boxSizing: "border-box",
                     zIndex: 1000
                 }}
@@ -2261,6 +2263,15 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={() => scrollToSection("student-sessions")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background: "#ffffff",
+                        color: "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
                 >
                     📚 My Sessions
                 </button>
@@ -2268,6 +2279,15 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={() => scrollToSection("student-profile")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background: "#ffffff",
+                        color: "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
                 >
                     👤 Profile
                 </button>
@@ -2275,6 +2295,15 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={() => scrollToSection("book-session")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background: "#ffffff",
+                        color: "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
                 >
                     📅 Book a Session
                 </button>
@@ -2282,6 +2311,15 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={handleLogout}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #ef4444",
+                        background: "#fff5f5",
+                        color: "#dc2626",
+                        cursor: "pointer",
+                        fontWeight: 700
+                    }}
                 >
                     🚪 Logout
                 </button>
@@ -2677,10 +2715,12 @@ function StudentDashboard({ profile, onLogout }) {
                                     return paymentDue ? (
                                         <button
                                             type="button"
-                                            onClick={() => {
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
                                                 setSelectedBooking({
                                                     ...booking,
-                                                    amount: booking.amount ?? booking.price_per_session,
+                                                    amount: booking.amount ?? booking.price_per_session ?? booking.price ?? booking.total_amount,
                                                 });
                                                 setBookingId(booking.booking_id);
                                                 bookingIdRef.current = booking.booking_id;
@@ -3487,7 +3527,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-            {showPaymentPopup && selectedBooking && (
+            {createPortal(showPaymentPopup && selectedBooking ? (
 
                 <div className="payment-modal-overlay">
 
@@ -3695,7 +3735,7 @@ function StudentDashboard({ profile, onLogout }) {
 
                 </div>
 
-            )}
+            ) : null, document.body)}
 
 
 
