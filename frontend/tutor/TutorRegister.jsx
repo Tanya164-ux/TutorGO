@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 
-
 function TutorRegister({
     onBack,
     onLogin,
@@ -41,10 +40,16 @@ function TutorRegister({
         const file = event.target.files[0];
 
         if (!file) {
+
             setResume(null);
             return;
+
         }
 
+
+        // -----------------------------------------
+        // ONLY PDF ALLOWED
+        // -----------------------------------------
 
         if (file.type !== "application/pdf") {
 
@@ -53,13 +58,12 @@ function TutorRegister({
             );
 
             setResume(null);
-
             return;
+
         }
 
 
         setError("");
-
         setResume(file);
 
     };
@@ -77,17 +81,18 @@ function TutorRegister({
         setSuccess("");
 
 
-        // -----------------------------------------
+        // =========================================
         // VALIDATION
-        // -----------------------------------------
+        // =========================================
 
         if (
-            !name ||
-            !email ||
-            !qualification ||
-            !experience ||
-            !price ||
-            !location
+            !name.trim() ||
+            !email.trim() ||
+            !password ||
+            !qualification.trim() ||
+            experience === "" ||
+            price === "" ||
+            !location.trim()
         ) {
 
             setError(
@@ -95,8 +100,64 @@ function TutorRegister({
             );
 
             return;
+
         }
 
+
+        // -----------------------------------------
+        // PASSWORD VALIDATION
+        // -----------------------------------------
+
+        if (password.length < 6) {
+
+            setError(
+                "Password must be at least 6 characters long."
+            );
+
+            return;
+
+        }
+
+
+        // -----------------------------------------
+        // EXPERIENCE VALIDATION
+        // -----------------------------------------
+
+        if (
+            !Number.isFinite(Number(experience)) ||
+            Number(experience) < 0
+        ) {
+
+            setError(
+                "Experience must be a valid non-negative number."
+            );
+
+            return;
+
+        }
+
+
+        // -----------------------------------------
+        // PRICE VALIDATION
+        // -----------------------------------------
+
+        if (
+            !Number.isFinite(Number(price)) ||
+            Number(price) < 0
+        ) {
+
+            setError(
+                "Price must be a valid non-negative number."
+            );
+
+            return;
+
+        }
+
+
+        // -----------------------------------------
+        // RESUME VALIDATION
+        // -----------------------------------------
 
         if (!resume) {
 
@@ -105,6 +166,7 @@ function TutorRegister({
             );
 
             return;
+
         }
 
 
@@ -130,9 +192,21 @@ function TutorRegister({
 
                     body: JSON.stringify({
 
-                        name,
-                        email,
-                        qualification,
+                        name:
+                            name.trim(),
+
+                        email:
+                            email.trim(),
+
+                        // ---------------------------------
+                        // PASSWORD ADDED
+                        // ---------------------------------
+
+                        password:
+                            password,
+
+                        qualification:
+                            qualification.trim(),
 
                         experience:
                             Number(experience),
@@ -140,7 +214,8 @@ function TutorRegister({
                         price_per_session:
                             Number(price),
 
-                        location
+                        location:
+                            location.trim()
 
                     })
                 }
@@ -150,6 +225,10 @@ function TutorRegister({
             const tutorData =
                 await tutorResponse.json();
 
+
+            // -----------------------------------------
+            // CHECK CREATE TUTOR RESPONSE
+            // -----------------------------------------
 
             if (!tutorResponse.ok) {
 
@@ -197,7 +276,6 @@ function TutorRegister({
                     "http://localhost:5000/api/resume",
                     {
                         method: "POST",
-
                         body: formData
                     }
                 );
@@ -206,6 +284,10 @@ function TutorRegister({
             const resumeData =
                 await resumeResponse.json();
 
+
+            // -----------------------------------------
+            // CHECK RESUME RESPONSE
+            // -----------------------------------------
 
             if (!resumeResponse.ok) {
 
@@ -230,13 +312,19 @@ function TutorRegister({
 
             const profileResponse =
                 await fetch(
-                    `http://localhost:5000/api/tutors/profile?email=${encodeURIComponent(email)}`
+                    `http://localhost:5000/api/tutors/profile?email=${encodeURIComponent(
+                        email.trim()
+                    )}`
                 );
 
 
             const profileData =
                 await profileResponse.json();
 
+
+            // -----------------------------------------
+            // CHECK PROFILE RESPONSE
+            // -----------------------------------------
 
             if (!profileResponse.ok) {
 
@@ -265,11 +353,21 @@ function TutorRegister({
             );
 
 
+            /*
+                Password is NOT included in the
+                tutor profile returned to the frontend.
+
+                The password is stored securely on
+                the backend using bcrypt.
+            */
+
+
             onComplete(
                 profileData.tutor
             );
 
         }
+
 
         catch (error) {
 
@@ -278,11 +376,14 @@ function TutorRegister({
                 error
             );
 
+
             setError(
-                error.message
+                error.message ||
+                "Registration failed. Please try again."
             );
 
         }
+
 
         finally {
 
@@ -368,7 +469,9 @@ function TutorRegister({
                 >
 
 
-                    {/* NAME */}
+                    {/* =================================
+                        NAME
+                    ================================= */}
 
                     <label>
                         Full Name
@@ -381,10 +484,14 @@ function TutorRegister({
                         onChange={(e) =>
                             setName(e.target.value)
                         }
+                        disabled={loading}
+                        required
                     />
 
 
-                    {/* EMAIL */}
+                    {/* =================================
+                        EMAIL
+                    ================================= */}
 
                     <label>
                         Email
@@ -397,10 +504,15 @@ function TutorRegister({
                         onChange={(e) =>
                             setEmail(e.target.value)
                         }
+                        disabled={loading}
+                        autoComplete="email"
+                        required
                     />
 
 
-                    {/* PASSWORD */}
+                    {/* =================================
+                        PASSWORD
+                    ================================= */}
 
                     <label>
                         Password
@@ -413,10 +525,28 @@ function TutorRegister({
                         onChange={(e) =>
                             setPassword(e.target.value)
                         }
+                        disabled={loading}
+                        autoComplete="new-password"
+                        minLength={6}
+                        required
                     />
 
+                    <small
+                        style={{
+                            display: "block",
+                            marginTop: "5px",
+                            marginBottom: "12px",
+                            color: "#777",
+                            fontSize: "12px"
+                        }}
+                    >
+                        Password must be at least 6 characters.
+                    </small>
 
-                    {/* QUALIFICATION */}
+
+                    {/* =================================
+                        QUALIFICATION
+                    ================================= */}
 
                     <label>
                         Qualification
@@ -431,10 +561,14 @@ function TutorRegister({
                                 e.target.value
                             )
                         }
+                        disabled={loading}
+                        required
                     />
 
 
-                    {/* EXPERIENCE */}
+                    {/* =================================
+                        EXPERIENCE
+                    ================================= */}
 
                     <label>
                         Teaching Experience (Years)
@@ -450,10 +584,14 @@ function TutorRegister({
                                 e.target.value
                             )
                         }
+                        disabled={loading}
+                        required
                     />
 
 
-                    {/* PRICE */}
+                    {/* =================================
+                        PRICE
+                    ================================= */}
 
                     <label>
                         Price Per Session (₹)
@@ -469,10 +607,14 @@ function TutorRegister({
                                 e.target.value
                             )
                         }
+                        disabled={loading}
+                        required
                     />
 
 
-                    {/* LOCATION */}
+                    {/* =================================
+                        LOCATION
+                    ================================= */}
 
                     <label>
                         Location
@@ -487,10 +629,14 @@ function TutorRegister({
                                 e.target.value
                             )
                         }
+                        disabled={loading}
+                        required
                     />
 
 
-                    {/* RESUME */}
+                    {/* =================================
+                        RESUME
+                    ================================= */}
 
                     <label>
                         Resume (PDF)
@@ -502,10 +648,14 @@ function TutorRegister({
                         onChange={
                             handleResumeChange
                         }
+                        disabled={loading}
+                        required
                     />
 
 
-                    {/* SELECTED FILE */}
+                    {/* =================================
+                        SELECTED FILE
+                    ================================= */}
 
                     {resume && (
 
@@ -528,7 +678,9 @@ function TutorRegister({
                     )}
 
 
-                    {/* SUBMIT */}
+                    {/* =================================
+                        SUBMIT
+                    ================================= */}
 
                     <button
                         type="submit"
@@ -538,7 +690,8 @@ function TutorRegister({
 
                         {loading
                             ? "Creating Profile..."
-                            : "Create Tutor Profile →"}
+                            : "Create Tutor Profile →"
+                        }
 
                     </button>
 
@@ -560,6 +713,7 @@ function TutorRegister({
                         type="button"
                         className="link-button"
                         onClick={onLogin}
+                        disabled={loading}
                     >
                         Login
                     </button>
@@ -573,9 +727,20 @@ function TutorRegister({
 
                 <div
                     className="back-link"
-                    onClick={onBack}
+                    onClick={
+                        loading
+                            ? undefined
+                            : onBack
+                    }
+                    style={{
+                        cursor: loading
+                            ? "not-allowed"
+                            : "pointer"
+                    }}
                 >
+
                     ← Back
+
                 </div>
 
 

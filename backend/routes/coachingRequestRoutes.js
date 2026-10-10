@@ -4,15 +4,16 @@ const db = require("../db");
 const router = express.Router();
 
 
-// ----------------------------------
-// Create Coaching Request
-// ----------------------------------
+// =========================================
+// CREATE COACHING REQUEST
+// =========================================
 
 router.post("/", (req, res) => {
 
     const {
         student_id,
         subject_id,
+        custom_subject,
         topic,
         preferred_time,
         budget,
@@ -20,31 +21,52 @@ router.post("/", (req, res) => {
     } = req.body;
 
 
-    // Check required fields
+    // =========================================
+    // VALIDATION
+    // =========================================
 
-    if (!student_id || !subject_id || !topic || !preferred_time) {
-
+    if (
+        !student_id ||
+        !topic ||
+        !preferred_time
+    ) {
         return res.status(400).json({
-            error: "student_id, subject_id, topic and preferred_time are required"
+            error:
+                "student_id, topic and preferred_time are required"
         });
-
     }
 
 
-    // Insert request
+    // Either existing subject or custom subject
+    if (
+        !subject_id &&
+        (!custom_subject ||
+            !custom_subject.trim())
+    ) {
+        return res.status(400).json({
+            error:
+                "Please select or enter a subject"
+        });
+    }
+
+
+    // =========================================
+    // INSERT REQUEST
+    // =========================================
 
     const sql = `
         INSERT INTO Coaching_Request
         (
             student_id,
             subject_id,
+            custom_subject,
             topic,
             preferred_time,
             budget,
             mode,
             status
         )
-        VALUES (?, ?, ?, ?, ?, ?, 'PENDING')
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING')
     `;
 
 
@@ -52,43 +74,65 @@ router.post("/", (req, res) => {
         sql,
         [
             student_id,
-            subject_id,
-            topic,
+
+            subject_id || null,
+
+            custom_subject
+                ? custom_subject.trim()
+                : null,
+
+            topic.trim(),
+
             preferred_time,
+
             budget || null,
+
             mode || "Online"
         ],
         (err, result) => {
 
             if (err) {
 
-                console.error(err);
+                console.error(
+                    "COACHING REQUEST ERROR:",
+                    err
+                );
 
                 return res.status(500).json({
-                    error: "Failed to create coaching request",
+                    error:
+                        "Failed to create coaching request",
+
                     details: err.message
                 });
 
             }
 
 
-            res.status(201).json({
+            return res.status(201).json({
 
-                message: "Coaching request created successfully",
+                message:
+                    "Coaching request created successfully",
 
-                request_id: result.insertId,
+                request_id:
+                    result.insertId,
 
-                student_id: student_id,
+                student_id,
 
-                subject_id: subject_id,
+                subject_id:
+                    subject_id || null,
 
-                topic: topic,
+                custom_subject:
+                    custom_subject || null,
 
-                preferred_time: preferred_time,
+                topic,
 
-                budget: budget || null,
+                preferred_time,
 
-                mode: mode || "Online",
+                budget:
+                    budget || null,
+
+                mode:
+                    mode || "Online",
 
                 status: "PENDING"
 

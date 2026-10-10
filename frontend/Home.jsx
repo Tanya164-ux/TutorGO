@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 
 import StudentDashboard from "./student/StudentDashboard";
@@ -9,24 +10,114 @@ import TutorLogin from "./tutor/TutorLogin";
 import TutorRegister from "./tutor/TutorRegister";
 
 
+// =====================================================
+// LOCAL STORAGE HELPERS
+// =====================================================
+
+const getSavedProfile = () => {
+    try {
+        const savedProfile = localStorage.getItem(
+            "tutorgo_profile"
+        );
+
+        return savedProfile
+            ? JSON.parse(savedProfile)
+            : null;
+
+    } catch (error) {
+        console.error(
+            "Failed to load saved profile:",
+            error
+        );
+
+        return null;
+    }
+};
+
+
+const getSavedRole = () => {
+    return localStorage.getItem(
+        "tutorgo_role"
+    );
+};
+
+
+// =====================================================
+// HOME COMPONENT
+// =====================================================
+
 function Home() {
 
-    const [role, setRole] = useState(null);
+    // Restore the previous login after refresh
+    const savedProfile = getSavedProfile();
+    const savedRole = getSavedRole();
 
-    const [screen, setScreen] = useState("login");
+    const [role, setRole] = useState(
+        savedRole || null
+    );
 
-    const [profile, setProfile] = useState(null);
+    const [screen, setScreen] = useState(
+        savedRole && savedProfile
+            ? "dashboard"
+            : "login"
+    );
+
+    const [profile, setProfile] = useState(
+        savedProfile
+    );
 
 
-    /* =====================================================
-       STUDENT
-       ===================================================== */
+    // =================================================
+    // SAVE LOGIN SESSION
+    // =================================================
+
+    const saveSession = (selectedRole, data) => {
+
+        setRole(selectedRole);
+        setProfile(data);
+        setScreen("dashboard");
+
+        localStorage.setItem(
+            "tutorgo_role",
+            selectedRole
+        );
+
+        localStorage.setItem(
+            "tutorgo_profile",
+            JSON.stringify(data)
+        );
+    };
+
+
+    // =================================================
+    // LOGOUT / RETURN TO HOME
+    // =================================================
+
+    const goToHome = () => {
+
+        setRole(null);
+        setScreen("login");
+        setProfile(null);
+
+        localStorage.removeItem(
+            "tutorgo_role"
+        );
+
+        localStorage.removeItem(
+            "tutorgo_profile"
+        );
+    };
+
+
+    // =====================================================
+    // STUDENT
+    // =====================================================
 
     if (role === "student") {
 
-        /* -----------------------------
-           STUDENT DASHBOARD
-           ----------------------------- */
+        // ---------------------------------------------
+        // STUDENT DASHBOARD
+        // ---------------------------------------------
 
         if (screen === "dashboard") {
 
@@ -35,17 +126,14 @@ function Home() {
 
                     <button
                         className="dashboard-home-button"
-                        onClick={() => {
-                            setRole(null);
-                            setScreen("login");
-                            setProfile(null);
-                        }}
+                        onClick={goToHome}
                     >
                         ← Home
                     </button>
 
                     <StudentDashboard
                         profile={profile}
+                        onLogout={goToHome}
                     />
 
                 </div>
@@ -53,21 +141,25 @@ function Home() {
         }
 
 
-        /* -----------------------------
-           STUDENT REGISTER
-           ----------------------------- */
+        // ---------------------------------------------
+        // STUDENT REGISTER
+        // ---------------------------------------------
 
         if (screen === "register") {
 
             return (
                 <StudentRegister
-                    onBack={() => setScreen("login")}
+
+                    onBack={() => {
+                        setScreen("login");
+                    }}
 
                     onComplete={(data) => {
 
-                        setProfile(data);
-
-                        setScreen("dashboard");
+                        saveSession(
+                            "student",
+                            data
+                        );
 
                     }}
                 />
@@ -75,9 +167,9 @@ function Home() {
         }
 
 
-        /* -----------------------------
-           STUDENT LOGIN
-           ----------------------------- */
+        // ---------------------------------------------
+        // STUDENT LOGIN
+        // ---------------------------------------------
 
         return (
             <StudentLogin
@@ -88,9 +180,10 @@ function Home() {
 
                 onLogin={(data) => {
 
-                    setProfile(data);
-
-                    setScreen("dashboard");
+                    saveSession(
+                        "student",
+                        data
+                    );
 
                 }}
             />
@@ -98,16 +191,15 @@ function Home() {
     }
 
 
-
-    /* =====================================================
-       TUTOR
-       ===================================================== */
+    // =====================================================
+    // TUTOR
+    // =====================================================
 
     if (role === "tutor") {
 
-        /* -----------------------------
-           TUTOR DASHBOARD
-           ----------------------------- */
+        // ---------------------------------------------
+        // TUTOR DASHBOARD
+        // ---------------------------------------------
 
         if (screen === "dashboard") {
 
@@ -116,21 +208,14 @@ function Home() {
 
                     <button
                         className="dashboard-home-button"
-                        onClick={() => {
-
-                            setRole(null);
-
-                            setScreen("login");
-
-                            setProfile(null);
-
-                        }}
+                        onClick={goToHome}
                     >
                         ← Home
                     </button>
 
                     <TutorDashboard
                         profile={profile}
+                        onLogout={goToHome}
                     />
 
                 </div>
@@ -138,9 +223,9 @@ function Home() {
         }
 
 
-        /* -----------------------------
-           TUTOR REGISTER
-           ----------------------------- */
+        // ---------------------------------------------
+        // TUTOR REGISTER
+        // ---------------------------------------------
 
         if (screen === "register") {
 
@@ -157,9 +242,10 @@ function Home() {
 
                     onComplete={(data) => {
 
-                        setProfile(data);
-
-                        setScreen("dashboard");
+                        saveSession(
+                            "tutor",
+                            data
+                        );
 
                     }}
                 />
@@ -167,9 +253,9 @@ function Home() {
         }
 
 
-        /* -----------------------------
-           TUTOR LOGIN
-           ----------------------------- */
+        // ---------------------------------------------
+        // TUTOR LOGIN
+        // ---------------------------------------------
 
         return (
             <TutorLogin
@@ -181,16 +267,16 @@ function Home() {
                 onBack={() => {
 
                     setRole(null);
-
                     setScreen("login");
 
                 }}
 
                 onLogin={(data) => {
 
-                    setProfile(data);
-
-                    setScreen("dashboard");
+                    saveSession(
+                        "tutor",
+                        data
+                    );
 
                 }}
             />
@@ -198,15 +284,13 @@ function Home() {
     }
 
 
-
-    /* =====================================================
-       HOME LANDING PAGE
-       ===================================================== */
+    // =====================================================
+    // HOME LANDING PAGE
+    // =====================================================
 
     return (
 
         <div className="home-page">
-
 
             {/* =========================================
                 NAVBAR
@@ -225,7 +309,6 @@ function Home() {
             </nav>
 
 
-
             {/* =========================================
                 HERO
                 ========================================= */}
@@ -241,7 +324,6 @@ function Home() {
                     </span>
                 </h1>
 
-
                 <p>
                     TutorGo connects students with suitable
                     tutors based on subject, expertise,
@@ -249,7 +331,6 @@ function Home() {
                 </p>
 
             </section>
-
 
 
             {/* =========================================
@@ -262,9 +343,7 @@ function Home() {
                     How would you like to continue?
                 </h2>
 
-
                 <div className="role-cards">
-
 
                     {/* =================================
                         STUDENT
@@ -276,8 +355,8 @@ function Home() {
                         onClick={() => {
 
                             setRole("student");
-
                             setScreen("login");
+                            setProfile(null);
 
                         }}
                     >
@@ -286,24 +365,20 @@ function Home() {
                             🎓
                         </div>
 
-
                         <h3>
                             I am a Student
                         </h3>
-
 
                         <p>
                             Find a tutor for your subject
                             and topic.
                         </p>
 
-
                         <div className="role-arrow">
                             →
                         </div>
 
                     </div>
-
 
 
                     {/* =================================
@@ -316,8 +391,8 @@ function Home() {
                         onClick={() => {
 
                             setRole("tutor");
-
                             setScreen("login");
+                            setProfile(null);
 
                         }}
                     >
@@ -326,17 +401,14 @@ function Home() {
                             🧑‍🏫
                         </div>
 
-
                         <h3>
                             I am a Tutor
                         </h3>
-
 
                         <p>
                             Share your expertise and
                             teach students.
                         </p>
-
 
                         <div className="role-arrow">
                             →
@@ -349,15 +421,11 @@ function Home() {
             </section>
 
 
-
             {/* =========================================
                 FEATURES
                 ========================================= */}
 
             <div className="feature-strip">
-
-
-                {/* QUICK MATCHING */}
 
                 <div className="feature-item">
 
@@ -368,11 +436,9 @@ function Home() {
                     <h3>
                         Quick Matching
                     </h3>
+
                 </div>
 
-
-
-                {/* SMART RANKING */}
 
                 <div className="feature-item">
 
@@ -383,11 +449,9 @@ function Home() {
                     <h3>
                         Smart Ranking
                     </h3>
+
                 </div>
 
-
-
-                {/* SECURE BOOKING */}
 
                 <div className="feature-item">
 
@@ -402,7 +466,6 @@ function Home() {
                 </div>
 
             </div>
-
 
 
             {/* =========================================

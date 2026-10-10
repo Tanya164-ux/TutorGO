@@ -1,237 +1,510 @@
+
 const express = require("express");
 const multer = require("multer");
 const pdfParse = require("pdf-parse");
 const fs = require("fs");
+const path = require("path");
+
 const parseResume = require("../parser/resumeParser");
-const db=require("../db");
+const db = require("../db");
+
 const router = express.Router();
 
+// =========================================
+// UPLOAD DIRECTORY
+// =========================================
+
+const uploadDirectory = path.join(
+    process.cwd(),
+    "uploads",
+    "resumes"
+);
+
+if (!fs.existsSync(uploadDirectory)) {
+    fs.mkdirSync(uploadDirectory, {
+        recursive: true
+    });
+}
+
+// =========================================
+// MULTER CONFIGURATION
+// =========================================
+
 const storage = multer.diskStorage({
+
     destination: function (req, file, cb) {
-        cb(null, "uploads/resumes/");
+        cb(null, uploadDirectory);
     },
 
     filename: function (req, file, cb) {
-        cb(null, Date.now() + "-" + file.originalname);
+
+        const extension = path.extname(file.originalname)
+            .toLowerCase();
+
+        const safeName = path
+            .basename(
+                file.originalname,
+                extension
+            )
+            .replace(/[^a-zA-Z0-9_-]/g, "_");
+
+        cb(
+            null,
+            `${Date.now()}-${safeName}${extension}`
+        );
+
     }
+
 });
 
 const upload = multer({
-    storage: storage,
+
+    storage,
+
+    limits: {
+        fileSize: 10 * 1024 * 1024
+    },
 
     fileFilter: function (req, file, cb) {
 
-        if (file.mimetype === "application/pdf") {
+        const extension = path
+            .extname(file.originalname)
+            .toLowerCase();
+
+        if (
+            file.mimetype === "application/pdf" &&
+            extension === ".pdf"
+        ) {
             cb(null, true);
         } else {
-            cb(new Error("Only PDF files are allowed"));
+            cb(
+                new Error("Only PDF files are allowed")
+            );
         }
+
     }
+
 });
 
-router.post("/", upload.single("resume"), async (req, res) => {
+// =========================================
+// DATABASE PROMISE HELPER
+// =========================================
 
-    try {
+function queryDatabase(sql, values = []) {
 
-        // -------------------------
-        // Check uploaded file
-        // -------------------------
+    return new Promise((resolve, reject) => {
 
-        if (!req.file) {
+        db.query(
+            sql,
+            values,
+            (error, results) => {
 
-            return res.status(400).json({
-                error: "Please upload a PDF resume"
-            });
-
-        }
-
-
-        // -------------------------
-        // Check tutor ID
-        // -------------------------
-
-        const tutorId = req.body.tutor_id;
-
-        if (!tutorId) {
-
-            return res.status(400).json({
-                error: "tutor_id is required"
-            });
-
-        }
-
-
-        // -------------------------
-        // Read PDF
-        // -------------------------
-
-        const dataBuffer = fs.readFileSync(req.file.path);
-
-
-        // -------------------------
-        // Extract PDF text
-        // -------------------------
-
-        const data = await pdfParse(dataBuffer);
-
-
-        // -------------------------
-        // Parse Resume
-        // -------------------------
-
-        const parsedData = parseResume(data.text);
-
-
-        // -------------------------
-        // Update Tutor table
-        // -------------------------
-
-        const updateTutorSQL = `
-            UPDATE Tutor
-            SET
-                name = ?,
-                qualification = ?,
-                experience = ?,
-                resume_path = ?
-            WHERE tutor_id = ?
-        `;
-
-        await new Promise((resolve, reject) => {
-
-            db.query(
-                updateTutorSQL,
-                [
-                    parsedData.name,
-                    parsedData.qualification,
-                    parsedData.experience,
-                    req.file.path,
-                    tutorId
-                ],
-                (err, result) => {
-
-                    if (err) {
-                        reject(err);
-                    } else {
-                        resolve(result);
-                    }
-
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(results);
                 }
-            );
 
-        });
+            }
+        );
 
+    });
 
-        // -------------------------
-        // Insert Tutor Expertise
-        // -------------------------
+}
 
-        for (const subject of parsedData.subjects) {
+// =========================================
+// NORMALIZE SUBJECT NAME
+// =========================================
 
-            const expertiseLevel =
-                parsedData.expertise[subject] || "Intermediate";
+function normalizeSubjectName(subject) {
 
+    return String(subject || "")
+        .replace(/\s+/g, " ")
+        .trim();
 
-            // Find subject ID
-            const subjectId = await new Promise((resolve, reject) => {
+}
 
-                const sql = `
-                    SELECT subject_id
-                    FROM Subject
-                    WHERE LOWER(subject_name) = LOWER(?)
-                `;
+// =========================================
+// FIND OR CREATE SUBJECT
+// =========================================
 
-                db.query(
-                    sql,
-                    [subject],
-                    (err, results) => {
+async function findOrCreateSubject(subjectName) {
 
-                        if (err) {
-                            reject(err);
-                            return;
-                        }
+    const normalizedName =
+        normalizeSubjectName(subjectName);
 
-                        if (results.length === 0) {
-                            resolve(null);
-                            return;
-                        }
+    if (!normalizedName) {
+        return null;
+    }
 
-                        resolve(results[0].subject_id);
+    // First search for an existing subject.
+    const existingSubjects = await queryDatabase(
+        `
+        SELECT subject_id, subject_name
+        FROM Subject
+        WHERE LOWER(TRIM(subject_name)) =
+              LOWER(TRIM(?))
+        LIMIT 1
+        `,
+        [normalizedName]
+    );
 
-                    }
-                );
+    if (existingSubjects.length > 0) {
 
-            });
+        return existingSubjects[0].subject_id;
 
+    }
 
-            // If subject doesn't exist, skip it
-            if (!subjectId) {
-                continue;
+    // Create a subject if it doesn't exist.
+    const insertResult = await queryDatabase(
+        `
+        INSERT INTO Subject
+        (
+            subject_name,
+            topic
+        )
+        VALUES (?, ?)
+        `,
+        [
+            normalizedName,
+            normalizedName
+        ]
+    );
+
+    return insertResult.insertId;
+
+}
+
+// =========================================
+// INSERT OR UPDATE TUTOR EXPERTISE
+// =========================================
+
+async function saveTutorExpertise(
+    tutorId,
+    subject,
+    expertiseLevel
+) {
+
+    const subjectId =
+        await findOrCreateSubject(subject);
+
+    if (!subjectId) {
+        return;
+    }
+
+    await queryDatabase(
+        `
+        INSERT INTO Tutor_Expertise
+        (
+            tutor_id,
+            subject_id,
+            expertise_level
+        )
+        VALUES (?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+            expertise_level = VALUES(expertise_level)
+        `,
+        [
+            tutorId,
+            subjectId,
+            expertiseLevel || "Intermediate"
+        ]
+    );
+
+}
+
+// =========================================
+// UPLOAD AND PARSE RESUME
+// =========================================
+
+router.post(
+    "/",
+    upload.single("resume"),
+    async (req, res) => {
+
+        let uploadedFilePath = null;
+
+        try {
+
+            // -----------------------------------------
+            // CHECK FILE
+            // -----------------------------------------
+
+            if (!req.file) {
+
+                return res.status(400).json({
+                    error: "Please upload a PDF resume"
+                });
+
             }
 
+            uploadedFilePath = req.file.path;
 
-            // Insert expertise
-            await new Promise((resolve, reject) => {
+            // -----------------------------------------
+            // CHECK TUTOR ID
+            // -----------------------------------------
 
-                const sql = `
-                    INSERT INTO Tutor_Expertise
-                    (tutor_id, subject_id, expertise_level)
-                    VALUES (?, ?, ?)
-                    ON DUPLICATE KEY UPDATE
-                    expertise_level = VALUES(expertise_level)
-                `;
+            const tutorId = Number(req.body.tutor_id);
 
-                db.query(
-                    sql,
-                    [tutorId, subjectId, expertiseLevel],
-                    (err) => {
+            if (
+                !Number.isInteger(tutorId) ||
+                tutorId <= 0
+            ) {
 
-                        if (err) {
-                            reject(err);
-                        } else {
-                            resolve();
-                        }
+                return res.status(400).json({
+                    error: "A valid tutor_id is required"
+                });
 
-                    }
+            }
+
+            // -----------------------------------------
+            // READ PDF
+            // -----------------------------------------
+
+            const dataBuffer =
+                fs.readFileSync(uploadedFilePath);
+
+            const pdfData =
+                await pdfParse(dataBuffer);
+
+            const extractedText =
+                (pdfData.text || "").trim();
+
+            // -----------------------------------------
+            // CHECK EXTRACTED TEXT
+            // -----------------------------------------
+
+            if (!extractedText) {
+
+                return res.status(422).json({
+
+                    error:
+                        "This PDF contains no extractable text. " +
+                        "It may be a scanned/image-only resume. " +
+                        "OCR processing is required."
+
+                });
+
+            }
+
+            // -----------------------------------------
+            // PARSE RESUME
+            // -----------------------------------------
+
+            const parsedData =
+                parseResume(extractedText);
+
+            if (!parsedData) {
+
+                return res.status(422).json({
+                    error:
+                        "Could not extract information from resume"
+                });
+
+            }
+
+            // -----------------------------------------
+            // GET EXISTING TUTOR
+            // -----------------------------------------
+
+            const existingTutorRows =
+                await queryDatabase(
+                    `
+                    SELECT
+                        name,
+                        qualification,
+                        experience,
+                        resume_path
+                    FROM Tutor
+                    WHERE tutor_id = ?
+                    LIMIT 1
+                    `,
+                    [tutorId]
                 );
+
+            if (existingTutorRows.length === 0) {
+
+                return res.status(404).json({
+                    error: "Tutor not found"
+                });
+
+            }
+
+            const existingTutor =
+                existingTutorRows[0];
+
+            // -----------------------------------------
+            // UPDATE TUTOR PROFILE
+            // -----------------------------------------
+
+            const updatedName =
+                parsedData.name ||
+                existingTutor.name;
+
+            const updatedQualification =
+                parsedData.qualification ||
+                existingTutor.qualification;
+
+            const updatedExperience =
+                parsedData.experience !== null &&
+                parsedData.experience !== undefined
+                    ? parsedData.experience
+                    : existingTutor.experience;
+
+            await queryDatabase(
+                `
+                UPDATE Tutor
+                SET
+                    name = ?,
+                    qualification = ?,
+                    experience = ?,
+                    resume_path = ?
+                WHERE tutor_id = ?
+                `,
+                [
+                    updatedName,
+                    updatedQualification,
+                    updatedExperience,
+                    uploadedFilePath,
+                    tutorId
+                ]
+            );
+
+            // -----------------------------------------
+            // SAVE SUBJECT EXPERTISE
+            // -----------------------------------------
+
+            const subjects =
+                Array.isArray(parsedData.subjects)
+                    ? parsedData.subjects
+                    : [];
+
+            const expertise =
+                parsedData.expertise || {};
+
+            for (const subject of subjects) {
+
+                const normalizedSubject =
+                    normalizeSubjectName(subject);
+
+                if (!normalizedSubject) {
+                    continue;
+                }
+
+                const expertiseLevel =
+                    expertise[subject] ||
+                    "Intermediate";
+
+                await saveTutorExpertise(
+                    tutorId,
+                    normalizedSubject,
+                    expertiseLevel
+                );
+
+            }
+
+            // -----------------------------------------
+            // RESPONSE
+            // -----------------------------------------
+
+            return res.status(200).json({
+
+                message:
+                    "Resume uploaded and tutor profile updated successfully",
+
+                tutor_id: tutorId,
+
+                file: req.file.filename,
+
+                resume_path: uploadedFilePath,
+
+                parsed_data: {
+
+                    ...parsedData,
+
+                    name: updatedName,
+
+                    qualification:
+                        updatedQualification,
+
+                    experience:
+                        updatedExperience
+
+                }
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                "RESUME PROCESSING ERROR:",
+                error
+            );
+
+            // Remove uploaded file if processing fails.
+            if (
+                uploadedFilePath &&
+                fs.existsSync(uploadedFilePath)
+            ) {
+
+                try {
+                    fs.unlinkSync(uploadedFilePath);
+                } catch (deleteError) {
+                    console.error(
+                        "FILE CLEANUP ERROR:",
+                        deleteError
+                    );
+                }
+
+            }
+
+            return res.status(500).json({
+
+                error:
+                    "Failed to process resume",
+
+                details:
+                    error.message
 
             });
 
         }
 
+    }
+);
 
-        // -------------------------
-        // Send Response
-        // -------------------------
+// =========================================
+// MULTER ERROR HANDLING
+// =========================================
 
-        res.json({
+router.use((error, req, res, next) => {
 
-            message: "Resume uploaded and tutor profile updated successfully",
+    if (error instanceof multer.MulterError) {
 
-            tutor_id: tutorId,
+        if (error.code === "LIMIT_FILE_SIZE") {
 
-            file: req.file.filename,
+            return res.status(400).json({
+                error:
+                    "Resume file must be smaller than 10 MB"
+            });
 
-            resume_path: req.file.path,
+        }
 
-            parsed_data: parsedData
-
+        return res.status(400).json({
+            error: error.message
         });
 
     }
 
-    catch (error) {
+    if (error) {
 
-        console.error("RESUME ERROR:", error);
-
-        res.status(500).json({
-
-            error: "Failed to process resume",
-
-            details: error.message
-
+        return res.status(400).json({
+            error: error.message
         });
 
     }
+
+    next();
 
 });
 

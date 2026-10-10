@@ -12,12 +12,15 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "multer": "^2.3.0",
+    "multer": "^2.4.0",
     "mysql2": "^3.24.3",
-    "pdf-parse": "^1.1.1",
+    "node-cron": "^4.6.0",
+    "nodemailer": "^10.0.10",
+    "pdf-parse": "^1.1.4",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

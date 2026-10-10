@@ -23,34 +23,130 @@ function TutorLogin({
 
         setError("");
 
-        if (!email) {
-            setError("Please enter your registered email.");
+
+        // -----------------------------------------
+        // VALIDATE EMAIL
+        // -----------------------------------------
+
+        if (!email.trim()) {
+
+            setError(
+                "Please enter your registered email."
+            );
+
             return;
+
         }
+
+
+        // -----------------------------------------
+        // VALIDATE PASSWORD
+        // -----------------------------------------
+
+        if (!password) {
+
+            setError(
+                "Please enter your password."
+            );
+
+            return;
+
+        }
+
 
         setLoading(true);
 
+
         try {
 
+            // -----------------------------------------
+            // SEND EMAIL + PASSWORD TO BACKEND
+            // -----------------------------------------
+
             const response = await fetch(
-                `http://localhost:5000/api/tutors/profile?email=${encodeURIComponent(email)}`
+                "http://localhost:5000/api/tutors/login",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body: JSON.stringify({
+
+                        email:
+                            email.trim(),
+
+                        password:
+                            password
+
+                    })
+
+                }
             );
 
-            const data = await response.json();
 
-            if (!response.ok) {
+            const responseText =
+                await response.text();
+
+
+            let data;
+
+
+            try {
+
+                data =
+                    JSON.parse(responseText);
+
+            } catch {
+
                 throw new Error(
-                    data.error ||
-                    "Tutor profile not found."
+                    "Backend returned an invalid login response."
                 );
+
             }
 
+
+            // -----------------------------------------
+            // LOGIN FAILED
+            // -----------------------------------------
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data.error ||
+                    data.message ||
+                    "Invalid email or password."
+                );
+
+            }
+
+
+            // -----------------------------------------
+            // LOGIN SUCCESSFUL
+            // -----------------------------------------
+
             console.log(
-                "Tutor profile loaded:",
+                "Tutor login successful:",
                 data.tutor
             );
 
+
+            if (!data.tutor) {
+
+                throw new Error(
+                    "Tutor login succeeded but no tutor profile was returned."
+                );
+
+            }
+
+
+            // Send authenticated tutor
+            // profile to Home.jsx
+
             onLogin(data.tutor);
+
 
         } catch (error) {
 
@@ -59,13 +155,18 @@ function TutorLogin({
                 error
             );
 
-            setError(error.message);
+
+            setError(
+                error.message ||
+                "Unable to login. Please try again."
+            );
 
         } finally {
 
             setLoading(false);
 
         }
+
     };
 
 
@@ -112,7 +213,7 @@ function TutorLogin({
                 </h1>
 
                 <p>
-                    Login to access your saved TutorGo profile.
+                    Login to access your TutorGo account.
                 </p>
 
 
@@ -139,7 +240,9 @@ function TutorLogin({
                     FORM
                 ===================================== */}
 
-                <form onSubmit={handleSubmit}>
+                <form
+                    onSubmit={handleSubmit}
+                >
 
 
                     {/* EMAIL */}
@@ -154,8 +257,13 @@ function TutorLogin({
                         placeholder="Enter your registered email"
                         value={email}
                         onChange={(e) =>
-                            setEmail(e.target.value)
+                            setEmail(
+                                e.target.value
+                            )
                         }
+                        disabled={loading}
+                        autoComplete="email"
+                        required
                     />
 
 
@@ -171,8 +279,13 @@ function TutorLogin({
                         placeholder="Enter your password"
                         value={password}
                         onChange={(e) =>
-                            setPassword(e.target.value)
+                            setPassword(
+                                e.target.value
+                            )
                         }
+                        disabled={loading}
+                        autoComplete="current-password"
+                        required
                     />
 
 
@@ -185,7 +298,7 @@ function TutorLogin({
                     >
 
                         {loading
-                            ? "Loading Profile..."
+                            ? "Logging in..."
                             : "Login →"
                         }
 
@@ -208,6 +321,7 @@ function TutorLogin({
                         type="button"
                         className="auth-secondary-button"
                         onClick={onRegister}
+                        disabled={loading}
                     >
                         Register
                     </button>
@@ -226,8 +340,8 @@ function TutorLogin({
                     </span>
 
                     <p>
-                        Your saved tutor profile will
-                        be loaded from TutorGo.
+                        Use the email and password
+                        registered with TutorGo.
                     </p>
 
                 </div>
@@ -238,6 +352,7 @@ function TutorLogin({
         </div>
 
     );
+
 }
 
 export default TutorLogin;

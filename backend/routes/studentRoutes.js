@@ -1,3 +1,4 @@
+
 const express = require("express");
 const router = express.Router();
 
@@ -6,13 +7,15 @@ const db = require("../db");
 
 // =========================================
 // CREATE STUDENT
+// POST /api/students
 // =========================================
 
 router.post("/", (req, res) => {
 
     const {
         name,
-        email
+        email,
+        education_level
     } = req.body;
 
 
@@ -20,29 +23,38 @@ router.post("/", (req, res) => {
     // Basic validation
     // -----------------------------------------
 
-    if (!name || !email) {
+    if (
+        !name ||
+        !email ||
+        !education_level
+    ) {
 
         return res.status(400).json({
-            error: "Name and email are required"
+            error:
+                "Name, email and class/degree year are required"
         });
 
     }
 
 
-    // -----------------------------------------
-    // Insert student
-    // -----------------------------------------
-
     const sql = `
         INSERT INTO Student
-        (name, email)
-        VALUES (?, ?)
+        (
+            name,
+            email,
+            education_level
+        )
+        VALUES (?, ?, ?)
     `;
 
 
     db.query(
         sql,
-        [name, email],
+        [
+            name.trim(),
+            email.trim(),
+            education_level.trim()
+        ],
         (err, result) => {
 
             if (err) {
@@ -53,7 +65,6 @@ router.post("/", (req, res) => {
                 );
 
 
-                // Duplicate email
                 if (err.code === "ER_DUP_ENTRY") {
 
                     return res.status(409).json({
@@ -65,7 +76,8 @@ router.post("/", (req, res) => {
 
 
                 return res.status(500).json({
-                    error: "Failed to create student"
+                    error: "Failed to create student",
+                    details: err.message
                 });
 
             }
@@ -77,7 +89,16 @@ router.post("/", (req, res) => {
                     "Student created successfully",
 
                 student_id:
-                    result.insertId
+                    result.insertId,
+
+                name:
+                    name.trim(),
+
+                email:
+                    email.trim(),
+
+                education_level:
+                    education_level.trim()
 
             });
 
@@ -87,14 +108,16 @@ router.post("/", (req, res) => {
 });
 
 
-
 // =========================================
 // GET STUDENT PROFILE BY EMAIL
+// GET /api/students/profile?email=...
 // =========================================
 
 router.get("/profile", (req, res) => {
 
-    const { email } = req.query;
+    const {
+        email
+    } = req.query;
 
 
     if (!email) {
@@ -110,7 +133,8 @@ router.get("/profile", (req, res) => {
         SELECT
             student_id,
             name,
-            email
+            email,
+            education_level
         FROM Student
         WHERE email = ?
     `;
@@ -118,7 +142,7 @@ router.get("/profile", (req, res) => {
 
     db.query(
         sql,
-        [email],
+        [email.trim()],
         (err, results) => {
 
             if (err) {
@@ -131,7 +155,10 @@ router.get("/profile", (req, res) => {
 
                 return res.status(500).json({
                     error:
-                        "Failed to fetch student profile"
+                        "Failed to fetch student profile",
+
+                    details:
+                        err.message
                 });
 
             }
@@ -149,7 +176,156 @@ router.get("/profile", (req, res) => {
 
             res.json({
 
-                student: results[0]
+                student:
+                    results[0]
+
+            });
+
+        }
+    );
+
+});
+
+
+// =========================================
+// UPDATE STUDENT PROFILE
+// PUT /api/students/:studentId
+// =========================================
+
+router.put("/:studentId", (req, res) => {
+
+    const studentId = Number(
+        req.params.studentId
+    );
+
+
+    const {
+        name,
+        email,
+        education_level
+    } = req.body;
+
+
+    // -----------------------------------------
+    // Validate student ID
+    // -----------------------------------------
+
+    if (
+        !Number.isInteger(studentId) ||
+        studentId <= 0
+    ) {
+
+        return res.status(400).json({
+            error:
+                "Invalid student ID"
+        });
+
+    }
+
+
+    // -----------------------------------------
+    // Validate required fields
+    // -----------------------------------------
+
+    if (
+        !name ||
+        !email ||
+        !education_level
+    ) {
+
+        return res.status(400).json({
+            error:
+                "Name, email and education level are required"
+        });
+
+    }
+
+
+    // -----------------------------------------
+    // Update student
+    // -----------------------------------------
+
+    const sql = `
+        UPDATE Student
+        SET
+            name = ?,
+            email = ?,
+            education_level = ?
+        WHERE student_id = ?
+    `;
+
+
+    db.query(
+        sql,
+        [
+            name.trim(),
+            email.trim(),
+            education_level.trim(),
+            studentId
+        ],
+        (err, result) => {
+
+            if (err) {
+
+                console.error(
+                    "STUDENT UPDATE ERROR:",
+                    err
+                );
+
+
+                if (err.code === "ER_DUP_ENTRY") {
+
+                    return res.status(409).json({
+                        error:
+                            "This email is already used by another student"
+                    });
+
+                }
+
+
+                return res.status(500).json({
+                    error:
+                        "Failed to update student profile",
+
+                    details:
+                        err.message
+                });
+
+            }
+
+
+            if (result.affectedRows === 0) {
+
+                return res.status(404).json({
+                    error:
+                        "Student not found"
+                });
+
+            }
+
+
+            return res.status(200).json({
+
+                success: true,
+
+                message:
+                    "Student profile updated successfully",
+
+                student: {
+
+                    student_id:
+                        studentId,
+
+                    name:
+                        name.trim(),
+
+                    email:
+                        email.trim(),
+
+                    education_level:
+                        education_level.trim()
+
+                }
 
             });
 

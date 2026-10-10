@@ -1,160 +1,493 @@
-import React, { useEffect, useState } from "react";
+
+import React, { useEffect, useState, useCallback } from "react";
 import { io } from "socket.io-client";
 
-function TutorDashboard({ profile }) {
+const API_URL = "http://localhost:5000";
 
-    // =========================================
+function TutorDashboard({ profile, onLogout }) {
+    // =====================================================
     // BASIC STATE
-    // =========================================
+    // =====================================================
+
+    const tutorId = profile?.tutor_id;
+
+    const [currentProfile, setCurrentProfile] = useState(profile || {});
+    const [showProfileEditor, setShowProfileEditor] = useState(false);
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [profileMessage, setProfileMessage] = useState("");
+
+    const [editName, setEditName] = useState("");
+    const [editEmail, setEditEmail] = useState("");
+    const [editQualification, setEditQualification] = useState("");
+    const [editExperience, setEditExperience] = useState("");
+    const [editPrice, setEditPrice] = useState("");
+    const [editLocation, setEditLocation] = useState("");
 
     const [requests, setRequests] = useState([]);
+    const [bookings, setBookings] = useState([]);
+
     const [message, setMessage] = useState("");
     const [connected, setConnected] = useState(false);
     const [processingRequest, setProcessingRequest] = useState(null);
+    const [loadingBookings, setLoadingBookings] = useState(false);
 
-    // Tutor ID comes from saved SQL profile
-    const tutorId = profile?.tutor_id;
+    // =====================================================
+    // DASHBOARD NAVIGATION
+    // =====================================================
 
+    const [activeSection, setActiveSection] = useState("profile");
 
-    // =========================================
+    // =====================================================
+    // VIDEO STATE
+    // =====================================================
+
+    const [showVideoPopup, setShowVideoPopup] = useState(false);
+
+    const [youtubeChannel, setYoutubeChannel] = useState(
+        profile?.youtube_channel_url || ""
+    );
+
+    const [demoVideo1, setDemoVideo1] = useState(
+        profile?.demo_video_1 || ""
+    );
+
+    const [demoVideo2, setDemoVideo2] = useState(
+        profile?.demo_video_2 || ""
+    );
+
+    const [videoLoading, setVideoLoading] = useState(false);
+    const [videoMessage, setVideoMessage] = useState("");
+
+    // =====================================================
     // AVAILABILITY STATE
-    // =========================================
+    // =====================================================
 
-    const [availabilitySlots, setAvailabilitySlots] =
-        useState([]);
+    const [availabilitySlots, setAvailabilitySlots] = useState([]);
 
-    const [availabilityDate, setAvailabilityDate] =
-        useState("");
+    const [availabilityDate, setAvailabilityDate] = useState("");
+    const [availabilityStart, setAvailabilityStart] = useState("");
+    const [availabilityEnd, setAvailabilityEnd] = useState("");
 
-    const [availabilityStart, setAvailabilityStart] =
-        useState("");
+    const [availabilityLoading, setAvailabilityLoading] = useState(false);
+    const [availabilityMessage, setAvailabilityMessage] = useState("");
 
-    const [availabilityEnd, setAvailabilityEnd] =
-        useState("");
-
-    const [availabilityLoading, setAvailabilityLoading] =
-        useState(false);
-
-    const [availabilityMessage, setAvailabilityMessage] =
-        useState("");
-
-
-    // =========================================
+    // =====================================================
     // PROFILE DATA
-    // =========================================
+    // =====================================================
 
-    const subjects = profile?.subjects || [];
+    const subjects = Array.isArray(profile?.subjects)
+        ? currentProfile.subjects
+        : [];
 
-    const expertise = profile?.expertise || {};
+    const expertise =
+        profile?.expertise &&
+        typeof currentProfile.expertise === "object"
+            ? currentProfile.expertise
+            : {};
 
+    // Keep local profile data synchronized with the parent profile
+    useEffect(() => {
+        setCurrentProfile(profile || {});
+    }, [profile]);
 
-    // =========================================
-    // FORMAT TIME
-    // =========================================
+    const openProfileEditor = () => {
+        setEditName(currentProfile?.name || "");
+        setEditEmail(currentProfile?.email || "");
+        setEditQualification(currentProfile?.qualification || "");
+        setEditExperience(currentProfile?.experience ?? "");
+        setEditPrice(currentProfile?.price_per_session ?? "");
+        setEditLocation(currentProfile?.location || "");
+        setProfileMessage("");
+        setShowProfileEditor(true);
+    };
+
+    const closeProfileEditor = () => {
+        if (!profileSaving) {
+            setShowProfileEditor(false);
+            setProfileMessage("");
+        }
+    };
+
+    const saveProfile = async (event) => {
+        event.preventDefault();
+
+        if (!tutorId) {
+            setProfileMessage("❌ Tutor profile not found.");
+            return;
+        }
+
+        if (
+            !editName.trim() ||
+            !editEmail.trim() ||
+            !editQualification.trim() ||
+            editExperience === "" ||
+            editPrice === "" ||
+            !editLocation.trim()
+        ) {
+            setProfileMessage("❌ Please fill in all profile fields.");
+            return;
+        }
+
+        if (Number(editExperience) < 0 || !Number.isFinite(Number(editExperience))) {
+            setProfileMessage("❌ Experience must be a valid non-negative number.");
+            return;
+        }
+
+        if (Number(editPrice) < 0 || !Number.isFinite(Number(editPrice))) {
+            setProfileMessage("❌ Price must be a valid non-negative number.");
+            return;
+        }
+
+        setProfileSaving(true);
+        setProfileMessage("");
+
+        try {
+            const response = await fetch(
+                `${API_URL}/api/tutors/${tutorId}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        name: editName.trim(),
+                        email: editEmail.trim(),
+                        qualification: editQualification.trim(),
+                        experience: Number(editExperience),
+                        price_per_session: Number(editPrice),
+                        location: editLocation.trim()
+                    })
+                }
+            );
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(
+                    getErrorMessage(data, "Failed to update profile")
+                );
+            }
+
+            const updatedTutor = data.tutor || {
+                ...currentProfile,
+                name: editName.trim(),
+                email: editEmail.trim(),
+                qualification: editQualification.trim(),
+                experience: Number(editExperience),
+                price_per_session: Number(editPrice),
+                location: editLocation.trim()
+            };
+
+            setCurrentProfile((previousProfile) => ({
+                ...previousProfile,
+                ...updatedTutor,
+                tutor_id: tutorId
+            }));
+
+            setProfileMessage("✓ Profile updated successfully.");
+            setShowProfileEditor(false);
+
+        } catch (error) {
+            console.error("UPDATE TUTOR PROFILE ERROR:", error);
+            setProfileMessage(`❌ ${error.message}`);
+        } finally {
+            setProfileSaving(false);
+        }
+    };
+
+    // Update video fields when profile changes
+    useEffect(() => {
+        setYoutubeChannel(profile?.youtube_channel_url || "");
+        setDemoVideo1(profile?.demo_video_1 || "");
+        setDemoVideo2(profile?.demo_video_2 || "");
+    }, [
+        profile?.youtube_channel_url,
+        profile?.demo_video_1,
+        profile?.demo_video_2
+    ]);
+
+    // =====================================================
+    // HELPER FUNCTIONS
+    // =====================================================
+
+    const getErrorMessage = (data, fallback) => {
+        return (
+            data?.error ||
+            data?.message ||
+            fallback
+        );
+    };
 
     const formatTime = (date) => {
-
         if (!date) {
             return "—";
         }
 
-        return new Date(date).toLocaleTimeString(
-            [],
-            {
-                hour: "2-digit",
-                minute: "2-digit"
-            }
-        );
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return String(date);
+        }
+
+        return parsedDate.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit"
+        });
     };
 
+    const formatDate = (date) => {
+        if (!date) {
+            return "—";
+        }
 
-    // =========================================
-    // FORMAT DATE + TIME
-    // =========================================
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return String(date);
+        }
+
+        return parsedDate.toLocaleDateString([], {
+            day: "2-digit",
+            month: "short",
+            year: "numeric"
+        });
+    };
 
     const formatDateTime = (date) => {
-
         if (!date) {
             return "—";
         }
 
-        return new Date(date).toLocaleString(
-            [],
-            {
-                day: "2-digit",
-                month: "short",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit"
-            }
-        );
+        const parsedDate = new Date(date);
+
+        if (Number.isNaN(parsedDate.getTime())) {
+            return String(date);
+        }
+
+        return parsedDate.toLocaleString([], {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit"
+        });
     };
 
+    const getStatusClass = (status) => {
+        const normalizedStatus = String(status || "")
+            .toUpperCase();
 
-    // =========================================
+        if (
+            normalizedStatus === "AVAILABLE" ||
+            normalizedStatus === "CONFIRMED" ||
+            normalizedStatus === "COMPLETED"
+        ) {
+            return "available-badge";
+        }
+
+        if (
+            normalizedStatus === "BOOKED" ||
+            normalizedStatus === "PAYMENT_PENDING" ||
+            normalizedStatus === "IN_PROGRESS"
+        ) {
+            return "booked-badge";
+        }
+
+        return "request-count";
+    };
+
+    // =====================================================
+    // TOP NAVIGATION
+    // =====================================================
+
+    const navigateToSection = (sectionId) => {
+        setActiveSection(sectionId);
+
+        const section = document.getElementById(sectionId);
+
+        if (section) {
+            section.scrollIntoView({
+                behavior: "smooth",
+                block: "start"
+            });
+        }
+    };
+
+    const handleLogout = () => {
+        if (typeof onLogout === "function") {
+            onLogout();
+            return;
+        }
+
+        // Fallback if Home.jsx has not yet passed onLogout.
+        localStorage.removeItem("tutorgo_role");
+        localStorage.removeItem("tutorgo_profile");
+        window.location.reload();
+    };
+
+    // =====================================================
     // LOAD AVAILABILITY
-    // =========================================
+    // =====================================================
 
-    const loadAvailability = async () => {
-
+    const loadAvailability = useCallback(async () => {
         if (!tutorId) {
             return;
         }
 
         try {
-
             const response = await fetch(
-                `http://localhost:5000/api/availability/tutor/${tutorId}`
+                `${API_URL}/api/availability/tutor/${tutorId}`
             );
 
-            const data = await response.json();
+            const data = await response.json().catch(() => ({}));
 
             if (!response.ok) {
-
                 throw new Error(
-                    data.error ||
-                    "Failed to load availability"
+                    getErrorMessage(
+                        data,
+                        "Failed to load availability"
+                    )
                 );
-
             }
 
-            setAvailabilitySlots(
-                data.slots || []
-            );
+            setAvailabilitySlots(data.slots || []);
 
-        }
-        catch (error) {
-
+        } catch (error) {
             console.error(
                 "LOAD AVAILABILITY ERROR:",
                 error
             );
 
+            setAvailabilityMessage(
+                `❌ ${error.message}`
+            );
         }
+    }, [tutorId]);
 
-    };
+    // =====================================================
+    // LOAD REQUESTS
+    // =====================================================
 
-
-    // =========================================
-    // SOCKET.IO CONNECTION
-    // =========================================
-
-    useEffect(() => {
-
+    const loadRequests = useCallback(async () => {
         if (!tutorId) {
             return;
         }
 
-        const socket =
-            io("http://localhost:5000");
+        try {
+            const response = await fetch(
+                `${API_URL}/api/tutor-requests/tutor/${tutorId}`
+            );
 
+            const data = await response.json().catch(() => ({}));
 
-        // -----------------------------------------
-        // CONNECTED
-        // -----------------------------------------
+            if (!response.ok) {
+                throw new Error(
+                    getErrorMessage(
+                        data,
+                        "Failed to load requests"
+                    )
+                );
+            }
+
+            const incomingRequests =
+                data.requests ||
+                data.data ||
+                (Array.isArray(data) ? data : []);
+
+            setRequests(
+                Array.isArray(incomingRequests)
+                    ? incomingRequests
+                    : []
+            );
+
+        } catch (error) {
+            console.error(
+                "LOAD REQUESTS ERROR:",
+                error
+            );
+
+            setMessage(`❌ ${error.message}`);
+        }
+    }, [tutorId]);
+
+    // =====================================================
+    // LOAD BOOKINGS
+    // =====================================================
+
+    const loadBookings = useCallback(async () => {
+        if (!tutorId) {
+            return;
+        }
+
+        setLoadingBookings(true);
+
+        try {
+            const response = await fetch(
+                `${API_URL}/api/bookings/tutor/${tutorId}`
+            );
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(
+                    getErrorMessage(
+                        data,
+                        "Failed to load bookings"
+                    )
+                );
+            }
+
+            setBookings(
+                Array.isArray(data.bookings)
+                    ? data.bookings
+                    : []
+            );
+
+        } catch (error) {
+            console.error(
+                "LOAD BOOKINGS ERROR:",
+                error
+            );
+
+            setMessage(`❌ ${error.message}`);
+
+        } finally {
+            setLoadingBookings(false);
+        }
+    }, [tutorId]);
+
+    // =====================================================
+    // INITIAL DATA LOADING
+    // =====================================================
+
+    useEffect(() => {
+        if (!tutorId) {
+            return;
+        }
+
+        loadAvailability();
+        loadRequests();
+        loadBookings();
+
+    }, [
+        tutorId,
+        loadAvailability,
+        loadRequests,
+        loadBookings
+    ]);
+
+    // =====================================================
+    // SOCKET.IO CONNECTION
+    // =====================================================
+
+    useEffect(() => {
+        if (!tutorId) {
+            return undefined;
+        }
+
+        const socket = io(API_URL);
 
         socket.on("connect", () => {
-
             console.log(
                 "Tutor connected:",
                 socket.id
@@ -162,138 +495,129 @@ function TutorDashboard({ profile }) {
 
             setConnected(true);
 
-
-            // Register tutor with Socket.IO
-
             socket.emit(
                 "registerTutor",
-                tutorId
+                Number(tutorId)
             );
 
+            // Refresh data after reconnecting
+            loadRequests();
+            loadBookings();
+            loadAvailability();
         });
 
+        socket.on("disconnect", () => {
+            console.log(
+                "Tutor disconnected"
+            );
 
-        // -----------------------------------------
-        // NEW STUDENT REQUEST
-        // -----------------------------------------
+            setConnected(false);
+        });
 
+        // New student request
         socket.on(
             "newCoachingRequest",
             (request) => {
-
                 console.log(
                     "New coaching request:",
                     request
                 );
 
-                setRequests(
-                    (previous) => {
+                setRequests((previousRequests) => {
+                    const alreadyExists =
+                        previousRequests.some(
+                            (item) =>
+                                Number(item.request_id) ===
+                                Number(request.request_id)
+                        );
 
-                        // Prevent duplicate request
-                        // from being added
-
-                        const alreadyExists =
-                            previous.some(
-                                (item) =>
-                                    item.request_id ===
-                                    request.request_id
-                            );
-
-                        if (alreadyExists) {
-                            return previous;
-                        }
-
-                        return [
-                            request,
-                            ...previous
-                        ];
-
+                    if (alreadyExists) {
+                        return previousRequests;
                     }
-                );
 
+                    return [
+                        request,
+                        ...previousRequests
+                    ];
+                });
             }
         );
 
-
-        // -----------------------------------------
-        // DISCONNECTED
-        // -----------------------------------------
-
+        // Booking created or updated
         socket.on(
-            "disconnect",
-            () => {
-
+            "bookingCreated",
+            (booking) => {
                 console.log(
-                    "Tutor disconnected"
+                    "Booking notification:",
+                    booking
                 );
 
-                setConnected(false);
+                setMessage(
+                    booking.message ||
+                    "A booking has been created."
+                );
 
+                loadBookings();
+                loadAvailability();
             }
         );
 
+        // Request status update
+        socket.on(
+            "requestStatusUpdated",
+            (updatedRequest) => {
+                console.log(
+                    "Request status updated:",
+                    updatedRequest
+                );
 
-        // -----------------------------------------
-        // CLEANUP
-        // -----------------------------------------
+                loadRequests();
+                loadBookings();
+                loadAvailability();
+            }
+        );
 
         return () => {
-
             socket.disconnect();
-
         };
 
-    }, [tutorId]);
+    }, [
+        tutorId,
+        loadRequests,
+        loadBookings,
+        loadAvailability
+    ]);
 
-
-    // =========================================
-    // LOAD AVAILABILITY WHEN DASHBOARD OPENS
-    // =========================================
-
-    useEffect(() => {
-
-        if (!tutorId) {
-            return;
-        }
-
-        loadAvailability();
-
-    }, [tutorId]);
-
-
-    // =========================================
+    // =====================================================
     // ADD AVAILABILITY SLOT
-    // =========================================
+    // =====================================================
 
-    const addAvailability = async (e) => {
-
-        e.preventDefault();
+    const addAvailability = async (event) => {
+        event.preventDefault();
 
         setAvailabilityMessage("");
-
-
-        // -----------------------------------------
-        // Validate form
-        // -----------------------------------------
 
         if (
             !availabilityDate ||
             !availabilityStart ||
             !availabilityEnd
         ) {
-
             setAvailabilityMessage(
                 "Please select date, start time and end time."
             );
 
             return;
-
         }
 
+        if (
+            availabilityEnd <= availabilityStart
+        ) {
+            setAvailabilityMessage(
+                "End time must be after start time."
+            );
 
-        // -----------------------------------------
-        // Create date-time strings
-        // -----------------------------------------
+            return;
+        }
 
         const startTime =
             `${availabilityDate}T${availabilityStart}`;
@@ -301,89 +625,58 @@ function TutorDashboard({ profile }) {
         const endTime =
             `${availabilityDate}T${availabilityEnd}`;
 
-
-        // -----------------------------------------
-        // Frontend time validation
-        // -----------------------------------------
+        const selectedStart = new Date(startTime);
 
         if (
-            availabilityEnd <=
-            availabilityStart
+            selectedStart.getTime() < Date.now()
         ) {
-
             setAvailabilityMessage(
-                "End time must be after start time."
+                "Please select a future time."
             );
 
             return;
-
         }
-
 
         setAvailabilityLoading(true);
 
-
         try {
-
             const response = await fetch(
-                "http://localhost:5000/api/availability",
+                `${API_URL}/api/availability`,
                 {
                     method: "POST",
-
                     headers: {
-                        "Content-Type":
-                            "application/json"
+                        "Content-Type": "application/json"
                     },
-
                     body: JSON.stringify({
-
-                        tutor_id:
-                            tutorId,
-
-                        start_time:
-                            startTime,
-
-                        end_time:
-                            endTime
-
+                        tutor_id: Number(tutorId),
+                        start_time: startTime,
+                        end_time: endTime
                     })
                 }
             );
 
-
-            const data =
-                await response.json();
-
+            const data = await response.json().catch(() => ({}));
 
             if (!response.ok) {
-
                 throw new Error(
-                    data.error ||
-                    "Failed to add availability"
+                    getErrorMessage(
+                        data,
+                        "Failed to add availability"
+                    )
                 );
-
             }
-
 
             setAvailabilityMessage(
                 "✓ Availability added successfully."
             );
 
-
-            // Clear form
-
             setAvailabilityDate("");
             setAvailabilityStart("");
             setAvailabilityEnd("");
 
-
-            // Reload slots
-
             await loadAvailability();
 
-        }
-        catch (error) {
-
+        } catch (error) {
             console.error(
                 "ADD AVAILABILITY ERROR:",
                 error
@@ -393,61 +686,52 @@ function TutorDashboard({ profile }) {
                 `❌ ${error.message}`
             );
 
-        }
-        finally {
-
+        } finally {
             setAvailabilityLoading(false);
-
         }
-
     };
 
-
-    // =========================================
+    // =====================================================
     // DELETE AVAILABILITY SLOT
-    // =========================================
+    // =====================================================
 
-    const deleteAvailability = async (
-        slotId
-    ) => {
+    const deleteAvailability = async (slotId) => {
+        const confirmed = window.confirm(
+            "Are you sure you want to remove this slot?"
+        );
+
+        if (!confirmed) {
+            return;
+        }
 
         try {
-
             setAvailabilityMessage("");
 
-
             const response = await fetch(
-                `http://localhost:5000/api/availability/${slotId}?tutor_id=${tutorId}`,
+                `${API_URL}/api/availability/${slotId}?tutor_id=${tutorId}`,
                 {
                     method: "DELETE"
                 }
             );
 
-
-            const data =
-                await response.json();
-
+            const data = await response.json().catch(() => ({}));
 
             if (!response.ok) {
-
                 throw new Error(
-                    data.error ||
-                    "Failed to delete slot"
+                    getErrorMessage(
+                        data,
+                        "Failed to delete slot"
+                    )
                 );
-
             }
-
 
             setAvailabilityMessage(
                 "Availability slot removed."
             );
 
-
             await loadAvailability();
 
-        }
-        catch (error) {
-
+        } catch (error) {
             console.error(
                 "DELETE AVAILABILITY ERROR:",
                 error
@@ -456,91 +740,65 @@ function TutorDashboard({ profile }) {
             setAvailabilityMessage(
                 `❌ ${error.message}`
             );
-
         }
-
     };
 
-
-    // =========================================
+    // =====================================================
     // ACCEPT REQUEST
-    // =========================================
+    // =====================================================
 
-    const handleAccept = async (
-        request
-    ) => {
+    const handleAccept = async (request) => {
+        const requestId = request.request_id;
 
-        setProcessingRequest(
-            request.request_id
-        );
-
+        setProcessingRequest(requestId);
         setMessage("");
 
-
         try {
+            const response = await fetch(
+                `${API_URL}/api/tutor-requests/${requestId}/accept`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        tutor_id: Number(tutorId),
+                        slot_id: request.slot_id
+                    })
+                }
+            );
 
-            const response =
-                await fetch(
-                    `http://localhost:5000/api/tutor-requests/${request.request_id}/accept`,
-                    {
-                        method: "POST",
+            const data = await response.json().catch(() => ({}));
 
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-
-                            tutor_id:
-                                tutorId,
-
-                            slot_id:
-                                request.slot_id
-
-                        })
-                    }
-                );
-
-
-            const data =
-                await response.json();
-
-
-            if (!response.ok) {
-
+            if (
+                !response.ok ||
+                data.success === false
+            ) {
                 throw new Error(
-                    data.error ||
-                    "Failed to accept request"
+                    getErrorMessage(
+                        data,
+                        "Failed to accept request"
+                    )
                 );
-
             }
 
-
             setMessage(
-                `Request ${request.request_id} accepted successfully. Booking confirmed.`
+                `✓ Request ${requestId} accepted successfully.`
             );
 
-
-            // Remove accepted request
-
-            setRequests(
-                (previous) =>
-                    previous.filter(
-                        (item) =>
-                            item.request_id !==
-                            request.request_id
-                    )
+            setRequests((previousRequests) =>
+                previousRequests.filter(
+                    (item) =>
+                        Number(item.request_id) !==
+                        Number(requestId)
+                )
             );
-
-
-            // Refresh availability
 
             await loadAvailability();
+            await loadRequests();
+            await loadBookings();
 
-        }
-        catch (error) {
-
+        } catch (error) {
             console.error(
                 "ACCEPT REQUEST ERROR:",
                 error
@@ -550,92 +808,64 @@ function TutorDashboard({ profile }) {
                 `❌ ${error.message}`
             );
 
-        }
-        finally {
-
+        } finally {
             setProcessingRequest(null);
-
         }
-
     };
 
-
-    // =========================================
+    // =====================================================
     // REJECT REQUEST
-    // =========================================
+    // =====================================================
 
-    const handleReject = async (
-        request
-    ) => {
+    const handleReject = async (request) => {
+        const requestId = request.request_id;
 
-        setProcessingRequest(
-            request.request_id
-        );
-
+        setProcessingRequest(requestId);
         setMessage("");
 
-
         try {
+            const response = await fetch(
+                `${API_URL}/api/tutor-requests/${requestId}/reject`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        tutor_id: Number(tutorId)
+                    })
+                }
+            );
 
-            const response =
-                await fetch(
-                    `http://localhost:5000/api/tutor-requests/${request.request_id}/reject`,
-                    {
-                        method: "POST",
+            const data = await response.json().catch(() => ({}));
 
-                        headers: {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                        body: JSON.stringify({
-
-                            tutor_id:
-                                tutorId
-
-                        })
-                    }
-                );
-
-
-            const data =
-                await response.json();
-
-
-            if (!response.ok) {
-
+            if (
+                !response.ok ||
+                data.success === false
+            ) {
                 throw new Error(
-                    data.error ||
-                    "Failed to reject request"
+                    getErrorMessage(
+                        data,
+                        "Failed to reject request"
+                    )
                 );
-
             }
 
-
             setMessage(
-                `Request ${request.request_id} rejected.`
+                `Request ${requestId} rejected.`
             );
 
-
-            // Remove rejected request
-
-            setRequests(
-                (previous) =>
-                    previous.filter(
-                        (item) =>
-                            item.request_id !==
-                            request.request_id
-                    )
+            setRequests((previousRequests) =>
+                previousRequests.filter(
+                    (item) =>
+                        Number(item.request_id) !==
+                        Number(requestId)
+                )
             );
 
+            await loadRequests();
 
-            // Refresh availability
-
-            await loadAvailability();
-
-        }
-        catch (error) {
-
+        } catch (error) {
             console.error(
                 "REJECT REQUEST ERROR:",
                 error
@@ -645,30 +875,94 @@ function TutorDashboard({ profile }) {
                 `❌ ${error.message}`
             );
 
-        }
-        finally {
-
+        } finally {
             setProcessingRequest(null);
-
         }
-
     };
 
+    // =====================================================
+    // SAVE VIDEO LINKS
+    // =====================================================
 
-    // =========================================
+    const saveVideoLinks = async () => {
+        if (!tutorId) {
+            setVideoMessage(
+                "Tutor profile not found."
+            );
+
+            return;
+        }
+
+        setVideoLoading(true);
+        setVideoMessage("");
+
+        try {
+            const response = await fetch(
+                `${API_URL}/api/tutors/${tutorId}/videos`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        youtube_channel_url:
+                            youtubeChannel.trim() || null,
+
+                        demo_video_1:
+                            demoVideo1.trim() || null,
+
+                        demo_video_2:
+                            demoVideo2.trim() || null
+                    })
+                }
+            );
+
+            const data = await response.json().catch(() => ({}));
+
+            if (!response.ok) {
+                throw new Error(
+                    getErrorMessage(
+                        data,
+                        "Failed to save video links"
+                    )
+                );
+            }
+
+            setVideoMessage(
+                "✓ Video links saved successfully."
+            );
+
+            setShowVideoPopup(false);
+
+        } catch (error) {
+            console.error(
+                "SAVE VIDEO LINKS ERROR:",
+                error
+            );
+
+            setVideoMessage(
+                `❌ ${error.message}`
+            );
+
+        } finally {
+            setVideoLoading(false);
+        }
+    };
+
+    const skipVideoLinks = () => {
+        setVideoMessage("");
+        setShowVideoPopup(false);
+    };
+
+    // =====================================================
     // NO PROFILE
-    // =========================================
+    // =====================================================
 
     if (!profile) {
-
         return (
-
             <div className="dashboard-page">
-
                 <div className="dashboard-section">
-
                     <div className="empty-state">
-
                         <div className="empty-icon">
                             👨‍🏫
                         </div>
@@ -680,80 +974,185 @@ function TutorDashboard({ profile }) {
                         <p>
                             Please login or register first.
                         </p>
-
                     </div>
-
                 </div>
-
             </div>
-
         );
-
     }
 
-
-    // =========================================
-    // DASHBOARD
-    // =========================================
+    // =====================================================
+    // DASHBOARD UI
+    // =====================================================
 
     return (
-
         <div className="dashboard-page">
 
-
-            {/* =====================================
+            {/* =========================================
                 HEADER
-            ===================================== */}
+            ========================================= */}
 
             <div className="dashboard-header">
-
                 <div>
-
                     <span className="dashboard-label">
                         TUTOR DASHBOARD
                     </span>
 
                     <h1>
                         Welcome,{" "}
-                        {profile.name || "Tutor"} 👋
+                        {currentProfile.name || "Tutor"} 👋
                     </h1>
 
                     <p>
-                        Manage your profile and respond
-                        to student tutoring requests.
+                        Manage your profile, availability
+                        and student requests.
                     </p>
-
                 </div>
 
-
-                {/* PROFILE BADGE */}
-
                 <div className="profile-badge">
-
-                    <span>
-                        🎓
-                    </span>
+                    <span>🎓</span>
 
                     <div>
-
                         <strong>
-                            {profile.name || "Tutor"}
+                            {currentProfile.name || "Tutor"}
                         </strong>
 
                         <small>
-                            Tutor ID: {profile.tutor_id}
+                            Tutor ID: {currentProfile.tutor_id}
                         </small>
-
                     </div>
-
                 </div>
-
             </div>
 
+            {/* =========================================
+                TOP NAVIGATION
+            ========================================= */}
 
-            {/* =====================================
+            <div
+                className="dashboard-nav"
+                style={{
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 50,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    margin: "20px 0",
+                    padding: "12px",
+                    background: "#ffffff",
+                    borderRadius: "14px",
+                    boxShadow: "0 8px 24px rgba(0,0,0,.08)"
+                }}
+            >
+                <button
+                    type="button"
+                    onClick={() => navigateToSection("bookings-section")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background:
+                            activeSection === "bookings-section"
+                                ? "#111827"
+                                : "#ffffff",
+                        color:
+                            activeSection === "bookings-section"
+                                ? "#ffffff"
+                                : "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
+                >
+                    📚 My Sessions
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => navigateToSection("profile-section")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background:
+                            activeSection === "profile-section"
+                                ? "#111827"
+                                : "#ffffff",
+                        color:
+                            activeSection === "profile-section"
+                                ? "#ffffff"
+                                : "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
+                >
+                    👤 Profile
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => navigateToSection("availability-section")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background:
+                            activeSection === "availability-section"
+                                ? "#111827"
+                                : "#ffffff",
+                        color:
+                            activeSection === "availability-section"
+                                ? "#ffffff"
+                                : "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
+                >
+                    🕐 Availability
+                </button>
+
+                <button
+                    type="button"
+                    onClick={() => navigateToSection("requests-section")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background:
+                            activeSection === "requests-section"
+                                ? "#111827"
+                                : "#ffffff",
+                        color:
+                            activeSection === "requests-section"
+                                ? "#ffffff"
+                                : "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
+                >
+                    📩 Student Requests
+                </button>
+
+                <button
+                    type="button"
+                    onClick={handleLogout}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #ef4444",
+                        background: "#fff5f5",
+                        color: "#dc2626",
+                        cursor: "pointer",
+                        fontWeight: 700
+                    }}
+                >
+                    🚪 Logout
+                </button>
+            </div>
+
+            {/* =========================================
                 CONNECTION STATUS
-            ===================================== */}
+            ========================================= */}
 
             <div
                 className={
@@ -762,7 +1161,6 @@ function TutorDashboard({ profile }) {
                         : "connection-status disconnected"
                 }
             >
-
                 <span className="status-dot">
                     ●
                 </span>
@@ -771,253 +1169,274 @@ function TutorDashboard({ profile }) {
                     ? "Connected • Ready for requests"
                     : "Disconnected • Reconnecting..."
                 }
-
             </div>
 
+            {/* =========================================
+                MESSAGE
+            ========================================= */}
 
-            {/* =====================================
+            {message && (
+                <div className="dashboard-message">
+                    {message}
+                </div>
+            )}
+
+            {/* =========================================
                 01 — PROFILE
-            ===================================== */}
+            ========================================= */}
 
-            <div className="dashboard-section">
-
+            <div
+                id="profile-section"
+                className="dashboard-section"
+                style={{ scrollMarginTop: "90px" }}
+            >
                 <div className="section-title">
-
                     <div>
-
-                        <span>
-                            01
-                        </span>
-
-                        <h2>
-                            Your Profile
-                        </h2>
-
+                        <span>01</span>
+                        <h2>Your Profile</h2>
                     </div>
 
                     <span className="saved-badge">
                         ✓ Saved
                     </span>
-
                 </div>
 
+                <button
+                    type="button"
+                    className="add-slot-button"
+                    onClick={openProfileEditor}
+                    style={{ marginBottom: "20px" }}
+                >
+                    ✏️ Edit Profile
+                </button>
+
+                {profileMessage && (
+                    <div className="availability-message" style={{ marginBottom: "18px" }}>
+                        {profileMessage}
+                    </div>
+                )}
 
                 <div className="profile-grid">
 
-
-                    {/* NAME */}
-
                     <div className="profile-info">
-
-                        <span>
-                            FULL NAME
-                        </span>
-
+                        <span>FULL NAME</span>
                         <strong>
-                            {profile.name || "—"}
+                            {currentProfile.name || "—"}
                         </strong>
-
                     </div>
 
-
-                    {/* EMAIL */}
-
                     <div className="profile-info">
-
-                        <span>
-                            EMAIL
-                        </span>
-
+                        <span>EMAIL</span>
                         <strong>
-                            {profile.email || "—"}
+                            {currentProfile.email || "—"}
                         </strong>
-
                     </div>
 
-
-                    {/* QUALIFICATION */}
-
                     <div className="profile-info">
-
-                        <span>
-                            QUALIFICATION
-                        </span>
-
+                        <span>QUALIFICATION</span>
                         <strong>
-                            {profile.qualification || "—"}
+                            {currentProfile.qualification || "—"}
                         </strong>
-
                     </div>
 
-
-                    {/* EXPERIENCE */}
-
                     <div className="profile-info">
-
-                        <span>
-                            EXPERIENCE
-                        </span>
-
+                        <span>EXPERIENCE</span>
                         <strong>
-                            {profile.experience ?? "—"} years
+                            {currentProfile.experience ?? "—"} years
                         </strong>
-
                     </div>
 
-
-                    {/* PRICE */}
-
                     <div className="profile-info">
-
-                        <span>
-                            PRICE / SESSION
-                        </span>
-
+                        <span>PRICE / SESSION</span>
                         <strong>
-                            ₹{profile.price_per_session || "—"}
+                            ₹{currentProfile.price_per_session || "—"}
                         </strong>
-
                     </div>
 
-
-                    {/* LOCATION */}
-
                     <div className="profile-info">
-
-                        <span>
-                            LOCATION
-                        </span>
-
+                        <span>LOCATION</span>
                         <strong>
-                            {profile.location || "—"}
+                            {currentProfile.location || "—"}
                         </strong>
-
                     </div>
 
-
-                    {/* RATING */}
-
                     <div className="profile-info">
-
-                        <span>
-                            RATING
-                        </span>
-
+                        <span>RATING</span>
                         <strong>
-                            ⭐ {profile.rating || "New"}
+                            ⭐ {currentProfile.rating || "New"}
                         </strong>
-
                     </div>
 
-
-                    {/* RESUME */}
-
                     <div className="profile-info">
-
-                        <span>
-                            RESUME
-                        </span>
-
+                        <span>RESUME</span>
                         <strong>
-                            {profile.resume_path
+                            {currentProfile.resume_path
                                 ? "📄 Uploaded"
                                 : "Not uploaded"}
                         </strong>
-
                     </div>
 
                 </div>
-
             </div>
 
-
-            {/* =====================================
+            {/* =========================================
                 02 — EXPERTISE
-            ===================================== */}
+            ========================================= */}
 
             {(subjects.length > 0 ||
                 Object.keys(expertise).length > 0) && (
-
                 <div className="dashboard-section">
 
                     <div className="section-title">
-
                         <div>
-
-                            <span>
-                                02
-                            </span>
-
-                            <h2>
-                                Expertise
-                            </h2>
-
+                            <span>02</span>
+                            <h2>Expertise</h2>
                         </div>
 
                         <span className="saved-badge">
                             {subjects.length} Subjects
                         </span>
-
                     </div>
-
 
                     <div className="expertise-list">
+                        {subjects.map((subject) => (
+                            <div
+                                className="expertise-item"
+                                key={subject}
+                            >
+                                <div>
+                                    <strong>
+                                        {subject}
+                                    </strong>
 
-                        {subjects.map(
-                            (subject) => (
-
-                                <div
-                                    className="expertise-item"
-                                    key={subject}
-                                >
-
-                                    <div>
-
-                                        <strong>
-                                            {subject}
-                                        </strong>
-
-                                        <small>
-                                            Teaching expertise
-                                        </small>
-
-                                    </div>
-
-                                    <span>
-                                        {expertise[subject] ||
-                                            "Intermediate"}
-                                    </span>
-
+                                    <small>
+                                        Teaching expertise
+                                    </small>
                                 </div>
 
-                            )
-                        )}
-
+                                <span>
+                                    {expertise[subject] ||
+                                        "Intermediate"}
+                                </span>
+                            </div>
+                        ))}
                     </div>
-
                 </div>
-
             )}
 
-
-            {/* =====================================
-                03 — AVAILABILITY
-            ===================================== */}
+            {/* =========================================
+                03 — TEACHING VIDEOS
+            ========================================= */}
 
             <div className="dashboard-section">
 
                 <div className="section-title">
-
                     <div>
+                        <span>03</span>
+                        <h2>Teaching Videos</h2>
+                    </div>
 
-                        <span>
-                            03
-                        </span>
+                    <span className="saved-badge">
+                        Optional
+                    </span>
+                </div>
 
-                        <h2>
-                            My Availability
-                        </h2>
+                <p
+                    style={{
+                        marginTop: "-8px",
+                        marginBottom: "16px",
+                        color: "#737b8c",
+                        fontSize: "13px"
+                    }}
+                >
+                    Add your YouTube channel or demo
+                    videos to show your teaching style.
+                </p>
 
+                <div
+                    style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                        marginBottom: "18px"
+                    }}
+                >
+                    {currentProfile.youtube_channel_url && (
+                        <a
+                            href={currentProfile.youtube_channel_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            ▶ YouTube Channel
+                        </a>
+                    )}
+
+                    {currentProfile.demo_video_1 && (
+                        <a
+                            href={currentProfile.demo_video_1}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            ▶ Demo Video 1
+                        </a>
+                    )}
+
+                    {currentProfile.demo_video_2 && (
+                        <a
+                            href={currentProfile.demo_video_2}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                        >
+                            ▶ Demo Video 2
+                        </a>
+                    )}
+
+                    {!currentProfile.youtube_channel_url &&
+                        !currentProfile.demo_video_1 &&
+                        !currentProfile.demo_video_2 && (
+                            <span
+                                style={{
+                                    color: "#737b8c",
+                                    fontSize: "13px"
+                                }}
+                            >
+                                No teaching videos added yet.
+                            </span>
+                        )}
+                </div>
+
+                <button
+                    type="button"
+                    className="add-slot-button"
+                    onClick={() => {
+                        setVideoMessage("");
+                        setShowVideoPopup(true);
+                    }}
+                >
+                    ✏️ Add / Edit Video Links
+                </button>
+
+                {videoMessage && (
+                    <div className="availability-message">
+                        {videoMessage}
+                    </div>
+                )}
+            </div>
+
+            {/* =========================================
+                04 — AVAILABILITY
+            ========================================= */}
+
+            <div
+                id="availability-section"
+                className="dashboard-section"
+                style={{ scrollMarginTop: "90px" }}
+            >
+
+                <div className="section-title">
+                    <div>
+                        <span>04</span>
+                        <h2>My Availability</h2>
                     </div>
 
                     <span className="saved-badge">
@@ -1026,9 +1445,7 @@ function TutorDashboard({ profile }) {
                             ? "Slot"
                             : "Slots"}
                     </span>
-
                 </div>
-
 
                 <p
                     style={{
@@ -1042,30 +1459,19 @@ function TutorDashboard({ profile }) {
                     available to teach students.
                 </p>
 
-
-                {/* =================================
-                    ADD AVAILABILITY FORM
-                ================================= */}
-
                 <form
                     onSubmit={addAvailability}
                     className="availability-form"
                 >
-
-                    {/* DATE */}
-
                     <div>
-
-                        <label>
-                            DATE
-                        </label>
+                        <label>DATE</label>
 
                         <input
                             type="date"
                             value={availabilityDate}
-                            onChange={(e) =>
+                            onChange={(event) =>
                                 setAvailabilityDate(
-                                    e.target.value
+                                    event.target.value
                                 )
                             }
                             min={
@@ -1073,97 +1479,60 @@ function TutorDashboard({ profile }) {
                                     .toISOString()
                                     .split("T")[0]
                             }
+                            required
                         />
-
                     </div>
 
-
-                    {/* START TIME */}
-
                     <div>
-
-                        <label>
-                            START TIME
-                        </label>
+                        <label>START TIME</label>
 
                         <input
                             type="time"
                             value={availabilityStart}
-                            onChange={(e) =>
+                            onChange={(event) =>
                                 setAvailabilityStart(
-                                    e.target.value
+                                    event.target.value
                                 )
                             }
+                            required
                         />
-
                     </div>
 
-
-                    {/* END TIME */}
-
                     <div>
-
-                        <label>
-                            END TIME
-                        </label>
+                        <label>END TIME</label>
 
                         <input
                             type="time"
                             value={availabilityEnd}
-                            onChange={(e) =>
+                            onChange={(event) =>
                                 setAvailabilityEnd(
-                                    e.target.value
+                                    event.target.value
                                 )
                             }
+                            required
                         />
-
                     </div>
-
-
-                    {/* ADD BUTTON */}
 
                     <button
                         type="submit"
                         className="add-slot-button"
                         disabled={availabilityLoading}
                     >
-
                         {availabilityLoading
                             ? "Adding..."
-                            : "+ Add Availability"
-                        }
-
+                            : "+ Add Availability"}
                     </button>
-
                 </form>
 
-
-                {/* =================================
-                    AVAILABILITY MESSAGE
-                ================================= */}
-
                 {availabilityMessage && (
-
                     <div className="availability-message">
-
                         {availabilityMessage}
-
                     </div>
-
                 )}
 
-
-                {/* =================================
-                    EXISTING SLOTS
-                ================================= */}
-
                 {availabilitySlots.length === 0 ? (
-
                     <div className="availability-empty">
-
-                        <span>
-                            🗓️
-                        </span>
+                        <span>🗓️</span>
 
                         <p>
                             No availability slots added yet.
@@ -1173,159 +1542,92 @@ function TutorDashboard({ profile }) {
                             Add your available teaching
                             times above.
                         </small>
-
                     </div>
-
                 ) : (
-
                     <div className="availability-list">
 
-                        {availabilitySlots.map(
-                            (slot) => (
-
-                                <div
-                                    className="availability-item"
-                                    key={slot.slot_id}
-                                >
-
-                                    <div>
-
-                                        <strong>
-
-                                            {new Date(
-                                                slot.start_time
-                                            ).toLocaleDateString(
-                                                [],
-                                                {
-                                                    day: "2-digit",
-                                                    month: "short",
-                                                    year: "numeric"
-                                                }
-                                            )}
-
-                                        </strong>
-
-                                        <span>
-
-                                            {formatTime(
-                                                slot.start_time
-                                            )}
-
-                                            {" – "}
-
-                                            {formatTime(
-                                                slot.end_time
-                                            )}
-
-                                        </span>
-
-                                    </div>
-
-
-                                    <div className="availability-actions">
-
-                                        <span
-                                            className={
-                                                slot.status ===
-                                                "AVAILABLE"
-                                                    ? "available-badge"
-                                                    : "booked-badge"
-                                            }
-                                        >
-
-                                            {slot.status}
-
-                                        </span>
-
-
-                                        {slot.status ===
-                                            "AVAILABLE" && (
-
-                                            <button
-                                                type="button"
-                                                className="delete-slot-button"
-                                                onClick={() =>
-                                                    deleteAvailability(
-                                                        slot.slot_id
-                                                    )
-                                                }
-                                            >
-                                                Remove
-                                            </button>
-
+                        {availabilitySlots.map((slot) => (
+                            <div
+                                className="availability-item"
+                                key={slot.slot_id}
+                            >
+                                <div>
+                                    <strong>
+                                        {formatDate(
+                                            slot.start_time
                                         )}
+                                    </strong>
 
-                                    </div>
-
+                                    <span>
+                                        {formatTime(
+                                            slot.start_time
+                                        )}
+                                        {" – "}
+                                        {formatTime(
+                                            slot.end_time
+                                        )}
+                                    </span>
                                 </div>
 
-                            )
-                        )}
+                                <div className="availability-actions">
+
+                                    <span
+                                        className={getStatusClass(
+                                            slot.status
+                                        )}
+                                    >
+                                        {slot.status}
+                                    </span>
+
+                                    {String(slot.status)
+                                        .toUpperCase() ===
+                                        "AVAILABLE" && (
+                                        <button
+                                            type="button"
+                                            className="delete-slot-button"
+                                            onClick={() =>
+                                                deleteAvailability(
+                                                    slot.slot_id
+                                                )
+                                            }
+                                        >
+                                            Remove
+                                        </button>
+                                    )}
+
+                                </div>
+                            </div>
+                        ))}
 
                     </div>
-
                 )}
-
             </div>
 
+            {/* =========================================
+                05 — STUDENT REQUESTS
+            ========================================= */}
 
-            {/* =====================================
-                04 — STUDENT REQUESTS
-            ===================================== */}
-
-            <div className="dashboard-section">
+            <div
+                id="requests-section"
+                className="dashboard-section"
+                style={{ scrollMarginTop: "90px" }}
+            >
 
                 <div className="section-title">
-
                     <div>
-
-                        <span>
-                            04
-                        </span>
-
-                        <h2>
-                            Student Requests
-                        </h2>
-
+                        <span>05</span>
+                        <h2>Student Requests</h2>
                     </div>
-
 
                     <span className="request-count">
-
-                        {requests.length}
-
-                        {" "}
-
+                        {requests.length}{" "}
                         {requests.length === 1
-                            ? "Pending Request"
-                            : "Pending Requests"}
-
+                            ? "Request"
+                            : "Requests"}
                     </span>
-
                 </div>
 
-
-                {/* =================================
-                    MESSAGE
-                ================================= */}
-
-                {message && (
-
-                    <div className="dashboard-message">
-
-                        {message}
-
-                    </div>
-
-                )}
-
-
-                {/* =================================
-                    NO REQUESTS
-                ================================= */}
-
                 {requests.length === 0 ? (
-
                     <div className="empty-state">
 
                         <div className="empty-icon">
@@ -1346,229 +1648,298 @@ function TutorDashboard({ profile }) {
                         </span>
 
                     </div>
-
                 ) : (
-
-
-                    /* =================================
-                       REQUEST LIST
-                    ================================= */
-
                     <div className="request-list">
 
-                        {requests.map(
-                            (request) => (
+                        {requests.map((request) => (
+                            <div
+                                className="request-card"
+                                key={request.request_id}
+                            >
 
-                                <div
-                                    className="request-card"
-                                    key={request.request_id}
-                                >
-
-
-                                    {/* REQUEST TOP */}
-
-                                    <div className="request-top">
-
-                                        <div>
-
-                                            <span className="request-id">
-
-                                                REQUEST #
-                                                {request.request_id}
-
-                                            </span>
-
-                                            <h3>
-                                                {request.subject_name ||
-                                                    "Subject"}
-                                            </h3>
-
-                                        </div>
-
-
-                                        <span className="live-badge">
-                                            ● LIVE
+                                <div className="request-top">
+                                    <div>
+                                        <span className="request-id">
+                                            REQUEST #
+                                            {request.request_id}
                                         </span>
 
+                                        <h3>
+                                            {request.subject_name ||
+                                                request.subject ||
+                                                "Subject"}
+                                        </h3>
                                     </div>
 
+                                    <span className="live-badge">
+                                        ● LIVE
+                                    </span>
+                                </div>
 
-                                    {/* REQUEST DETAILS */}
+                                <div className="request-details">
 
-                                    <div className="request-details">
+                                    <div>
+                                        <span>TOPIC</span>
 
-
-                                        {/* TOPIC */}
-
-                                        <div>
-
-                                            <span>
-                                                TOPIC
-                                            </span>
-
-                                            <strong>
-                                                {request.topic ||
-                                                    "—"}
-                                            </strong>
-
-                                        </div>
-
-
-                                        {/* BUDGET */}
-
-                                        <div>
-
-                                            <span>
-                                                BUDGET
-                                            </span>
-
-                                            <strong>
-                                                ₹{request.budget ||
-                                                    "—"}
-                                            </strong>
-
-                                        </div>
-
-
-                                        {/* MODE */}
-
-                                        <div>
-
-                                            <span>
-                                                MODE
-                                            </span>
-
-                                            <strong>
-                                                {request.mode ||
-                                                    "—"}
-                                            </strong>
-
-                                        </div>
-
-
-                                        {/* PREFERRED TIME */}
-
-                                        <div>
-
-                                            <span>
-                                                PREFERRED TIME
-                                            </span>
-
-                                            <strong>
-                                                {formatDateTime(
-                                                    request.preferred_time
-                                                )}
-                                            </strong>
-
-                                        </div>
-
+                                        <strong>
+                                            {request.topic || "—"}
+                                        </strong>
                                     </div>
 
+                                    <div>
+                                        <span>BUDGET</span>
 
-                                    {/* =================================
-                                        AVAILABLE SLOT
-                                    ================================= */}
+                                        <strong>
+                                            ₹{request.budget || "—"}
+                                        </strong>
+                                    </div>
 
+                                    <div>
+                                        <span>MODE</span>
+
+                                        <strong>
+                                            {request.mode || "—"}
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>PREFERRED TIME</span>
+
+                                        <strong>
+                                            {formatDateTime(
+                                                request.preferred_time
+                                            )}
+                                        </strong>
+                                    </div>
+
+                                </div>
+
+                                {request.slot_id && (
                                     <div className="slot-info">
 
                                         <div>
-
                                             <span>
                                                 AVAILABLE SLOT
                                             </span>
 
                                             <strong>
-                                                Slot #{request.slot_id}
+                                                Slot #
+                                                {request.slot_id}
                                             </strong>
-
                                         </div>
 
                                         <small>
-
                                             {formatTime(
                                                 request.start_time
                                             )}
-
                                             {" – "}
-
                                             {formatTime(
                                                 request.end_time
                                             )}
-
                                         </small>
 
                                     </div>
+                                )}
 
+                                <div className="request-actions">
 
-                                    {/* =================================
-                                        ACTIONS
-                                    ================================= */}
-
-                                    <div className="request-actions">
-
-
-                                        {/* ACCEPT */}
-
-                                        <button
-                                            className="accept-button"
-                                            onClick={() =>
-                                                handleAccept(
-                                                    request
-                                                )
-                                            }
-                                            disabled={
-                                                processingRequest ===
-                                                request.request_id
-                                            }
-                                        >
-
-                                            {processingRequest ===
+                                    <button
+                                        className="accept-button"
+                                        onClick={() =>
+                                            handleAccept(request)
+                                        }
+                                        disabled={
+                                            processingRequest ===
                                             request.request_id
-                                                ? "Processing..."
-                                                : "✓ Accept"}
+                                        }
+                                    >
+                                        {processingRequest ===
+                                        request.request_id
+                                            ? "Processing..."
+                                            : "✓ Accept"}
+                                    </button>
 
-                                        </button>
-
-
-                                        {/* REJECT */}
-
-                                        <button
-                                            className="reject-button"
-                                            onClick={() =>
-                                                handleReject(
-                                                    request
-                                                )
-                                            }
-                                            disabled={
-                                                processingRequest ===
-                                                request.request_id
-                                            }
-                                        >
-
-                                            {processingRequest ===
+                                    <button
+                                        className="reject-button"
+                                        onClick={() =>
+                                            handleReject(request)
+                                        }
+                                        disabled={
+                                            processingRequest ===
                                             request.request_id
-                                                ? "Please wait..."
-                                                : "✕ Reject"}
+                                        }
+                                    >
+                                        {processingRequest ===
+                                        request.request_id
+                                            ? "Please wait..."
+                                            : "✕ Reject"}
+                                    </button>
 
-                                        </button>
+                                </div>
 
+                            </div>
+                        ))}
+
+                    </div>
+                )}
+            </div>
+
+            {/* =========================================
+                06 — BOOKINGS
+            ========================================= */}
+
+            <div
+                id="bookings-section"
+                className="dashboard-section"
+                style={{ scrollMarginTop: "90px" }}
+            >
+
+                <div className="section-title">
+                    <div>
+                        <span>06</span>
+                        <h2>My Sessions</h2>
+                    </div>
+
+                    <span className="saved-badge">
+                        {bookings.length} {bookings.length === 1 ? "Session" : "Sessions"}
+                    </span>
+                </div>
+
+                {loadingBookings ? (
+                    <div className="empty-state">
+                        Loading bookings...
+                    </div>
+                ) : bookings.length === 0 ? (
+                    <div className="empty-state">
+
+                        <div className="empty-icon">
+                            📅
+                        </div>
+
+                        <h3>
+                            No bookings yet
+                        </h3>
+
+                        <p>
+                            Accepted student bookings
+                            will appear here.
+                        </p>
+
+                    </div>
+                ) : (
+                    <div className="request-list">
+
+                        {bookings.map((booking) => (
+                            <div
+                                className="request-card"
+                                key={booking.booking_id}
+                            >
+
+                                <div className="request-top">
+                                    <div>
+                                        <span className="request-id">
+                                            BOOKING #
+                                            {booking.booking_id}
+                                        </span>
+
+                                        <h3>
+                                            {booking.student_name ||
+                                                `Student #${booking.student_id}`}
+                                        </h3>
+                                    </div>
+
+                                    <span
+                                        className={getStatusClass(
+                                            booking.booking_status
+                                        )}
+                                    >
+                                        {booking.booking_status}
+                                    </span>
+                                </div>
+
+                                <div className="request-details">
+
+                                    <div>
+                                        <span>REQUEST ID</span>
+
+                                        <strong>
+                                            {booking.request_id || "—"}
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>STUDENT ID</span>
+
+                                        <strong>
+                                            {booking.student_id || "—"}
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>PRICE</span>
+
+                                        <strong>
+                                            ₹
+                                            {booking.price_per_session ||
+                                                currentProfile.price_per_session ||
+                                                "—"}
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>START TIME</span>
+
+                                        <strong>
+                                            {formatDateTime(
+                                                booking.start_time
+                                            )}
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>END TIME</span>
+
+                                        <strong>
+                                            {formatDateTime(
+                                                booking.end_time
+                                            )}
+                                        </strong>
                                     </div>
 
                                 </div>
 
-                            )
-                        )}
+                                {booking.meeting_link && (
+                                    <div className="slot-info">
+
+                                        <div>
+                                            <span>
+                                                MEETING LINK
+                                            </span>
+
+                                            <a
+                                                href={
+                                                    booking.meeting_link
+                                                }
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                            >
+                                                Join Session
+                                            </a>
+                                        </div>
+
+                                    </div>
+                                )}
+
+                            </div>
+                        ))}
 
                     </div>
-
                 )}
-
             </div>
 
-
-            {/* =====================================
+            {/* =========================================
                 SYSTEM STATUS
-            ===================================== */}
+            ========================================= */}
 
             <div className="system-status">
 
@@ -1582,12 +1953,261 @@ function TutorDashboard({ profile }) {
 
             </div>
 
+            {/* =========================================
+                EDIT PROFILE POPUP
+            ========================================= */}
+
+            {showProfileEditor && (
+                <div
+                    className="video-popup-overlay"
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0,0,0,.55)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "20px",
+                        zIndex: 1000,
+                        overflowY: "auto"
+                    }}
+                >
+                    <div
+                        className="video-popup"
+                        style={{
+                            width: "100%",
+                            maxWidth: "560px",
+                            background: "#fff",
+                            borderRadius: "18px",
+                            padding: "28px",
+                            boxShadow: "0 20px 60px rgba(0,0,0,.2)"
+                        }}
+                    >
+                        <div
+                            style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center",
+                                gap: "12px"
+                            }}
+                        >
+                            <h2>✏️ Edit Tutor Profile</h2>
+                            <button type="button" onClick={closeProfileEditor}>✕</button>
+                        </div>
+
+                        <form onSubmit={saveProfile}>
+                            <div className="profile-info">
+                                <label htmlFor="edit-tutor-name">Full Name</label>
+                                <input id="edit-tutor-name" type="text" value={editName} onChange={(event) => setEditName(event.target.value)} required />
+                            </div>
+
+                            <div className="profile-info">
+                                <label htmlFor="edit-tutor-email">Email</label>
+                                <input id="edit-tutor-email" type="email" value={editEmail} onChange={(event) => setEditEmail(event.target.value)} required />
+                            </div>
+
+                            <div className="profile-info">
+                                <label htmlFor="edit-tutor-qualification">Qualification</label>
+                                <input id="edit-tutor-qualification" type="text" value={editQualification} onChange={(event) => setEditQualification(event.target.value)} required />
+                            </div>
+
+                            <div className="profile-info">
+                                <label htmlFor="edit-tutor-experience">Experience (years)</label>
+                                <input id="edit-tutor-experience" type="number" min="0" step="0.5" value={editExperience} onChange={(event) => setEditExperience(event.target.value)} required />
+                            </div>
+
+                            <div className="profile-info">
+                                <label htmlFor="edit-tutor-price">Price per session (₹)</label>
+                                <input id="edit-tutor-price" type="number" min="0" step="0.01" value={editPrice} onChange={(event) => setEditPrice(event.target.value)} required />
+                            </div>
+
+                            <div className="profile-info">
+                                <label htmlFor="edit-tutor-location">Location</label>
+                                <input id="edit-tutor-location" type="text" value={editLocation} onChange={(event) => setEditLocation(event.target.value)} required />
+                            </div>
+
+                            <div style={{ display: "flex", gap: "12px", justifyContent: "flex-end", marginTop: "22px" }}>
+                                <button type="button" className="reject-button" onClick={closeProfileEditor} disabled={profileSaving}>Cancel</button>
+                                <button type="submit" className="accept-button" disabled={profileSaving}>
+                                    {profileSaving ? "Saving..." : "Save Profile"}
+                                </button>
+                            </div>
+                        </form>
+
+                        {profileMessage && (
+                            <div className="dashboard-message" style={{ marginTop: "16px" }}>
+                                {profileMessage}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* =========================================
+                VIDEO POPUP
+            ========================================= */}
+
+            {showVideoPopup && (
+                <div
+                    className="video-popup-overlay"
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        background: "rgba(0,0,0,.55)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "20px",
+                        zIndex: 1000
+                    }}
+                >
+
+                    <div
+                        className="video-popup"
+                        style={{
+                            width: "100%",
+                            maxWidth: "520px",
+                            background: "#fff",
+                            borderRadius: "18px",
+                            padding: "28px",
+                            boxShadow:
+                                "0 20px 60px rgba(0,0,0,.2)"
+                        }}
+                    >
+
+                        <div
+                            style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                alignItems: "center"
+                            }}
+                        >
+                            <h2>
+                                🎥 Showcase Your Teaching
+                            </h2>
+
+                            <button
+                                type="button"
+                                onClick={skipVideoLinks}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <p
+                            style={{
+                                color: "#737b8c",
+                                fontSize: "14px",
+                                lineHeight: 1.6
+                            }}
+                        >
+                            Add your YouTube channel or
+                            demo videos. All fields are optional.
+                        </p>
+
+                        <div className="profile-info">
+                            <label htmlFor="youtube-channel-url">
+                                YouTube Channel URL
+                            </label>
+
+                            <input
+                                id="youtube-channel-url"
+                                type="url"
+                                placeholder="https://youtube.com/@yourchannel"
+                                value={youtubeChannel}
+                                onChange={(event) =>
+                                    setYoutubeChannel(
+                                        event.target.value
+                                    )
+                                }
+                            />
+                        </div>
+
+                        <div className="profile-info">
+                            <label htmlFor="demo-video-1">
+                                Demo Video 1 URL
+                            </label>
+
+                            <input
+                                id="demo-video-1"
+                                type="url"
+                                placeholder="https://youtube.com/watch?v=..."
+                                value={demoVideo1}
+                                onChange={(event) =>
+                                    setDemoVideo1(
+                                        event.target.value
+                                    )
+                                }
+                            />
+                        </div>
+
+                        <div className="profile-info">
+                            <label htmlFor="demo-video-2">
+                                Demo Video 2 URL
+                            </label>
+
+                            <input
+                                id="demo-video-2"
+                                type="url"
+                                placeholder="https://youtube.com/watch?v=..."
+                                value={demoVideo2}
+                                onChange={(event) =>
+                                    setDemoVideo2(
+                                        event.target.value
+                                    )
+                                }
+                            />
+                        </div>
+
+                        <div
+                            style={{
+                                display: "flex",
+                                gap: "12px",
+                                justifyContent: "flex-end",
+                                marginTop: "22px"
+                            }}
+                        >
+
+                            <button
+                                type="button"
+                                className="reject-button"
+                                onClick={skipVideoLinks}
+                                disabled={videoLoading}
+                            >
+                                Skip for now
+                            </button>
+
+                            <button
+                                type="button"
+                                className="accept-button"
+                                onClick={saveVideoLinks}
+                                disabled={videoLoading}
+                            >
+                                {videoLoading
+                                    ? "Saving..."
+                                    : "Save & Continue"}
+                            </button>
+
+                        </div>
+
+                        {videoMessage && (
+                            <div
+                                className="dashboard-message"
+                                style={{
+                                    marginTop: "16px"
+                                }}
+                            >
+                                {videoMessage}
+                            </div>
+                        )}
+
+                    </div>
+
+                </div>
+            )}
 
         </div>
-
     );
-
 }
-
 
 export default TutorDashboard;
