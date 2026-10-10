@@ -118,6 +118,10 @@ function StudentDashboard({ profile, onLogout }) {
 
     const [feedbackLoading, setFeedbackLoading] = useState(false);
 
+    const [showFeedbackPopup, setShowFeedbackPopup] = useState(false);
+
+    const [pendingFeedbackBooking, setPendingFeedbackBooking] = useState(null);
+
 
 
     // =========================================
@@ -221,9 +225,44 @@ function StudentDashboard({ profile, onLogout }) {
                 );
             }
 
-            setStudentBookings(
-                Array.isArray(data.bookings) ? data.bookings : []
+            const bookings = Array.isArray(data.bookings) ? data.bookings : [];
+            setStudentBookings(bookings);
+
+            // Find completed sessions that have not been reviewed yet. This
+            // also works after refreshing or signing back in.
+            const completedBookings = bookings.filter((booking) =>
+                String(booking.booking_status || "").toUpperCase() === "COMPLETED"
             );
+
+            if (completedBookings.length > 0 && !feedbackLoading) {
+                const checks = await Promise.all(completedBookings.map(async (booking) => {
+                    try {
+                        const feedbackResponse = await fetch(
+                            `${API_BASE_URL}/api/feedback/booking/${booking.booking_id}`
+                        );
+                        if (!feedbackResponse.ok) return null;
+                        const feedbackData = await feedbackResponse.json();
+                        const rows = Array.isArray(feedbackData.feedback)
+                            ? feedbackData.feedback : [];
+                        return rows.length === 0 ? booking : null;
+                    } catch (err) {
+                        console.warn("Could not check feedback for booking", booking.booking_id, err);
+                        return null;
+                    }
+                }));
+
+                const needsFeedback = checks.find(Boolean);
+                if (needsFeedback) {
+                    setPendingFeedbackBooking(needsFeedback);
+                    setBookingId(needsFeedback.booking_id);
+                    bookingIdRef.current = needsFeedback.booking_id;
+                    setBookingStatus("COMPLETED");
+                    setFeedbackRating("5");
+                    setFeedbackComments("");
+                    setFeedbackSubmitted(false);
+                    setShowFeedbackPopup(true);
+                }
+            }
         } catch (err) {
             console.error("LOAD STUDENT BOOKINGS ERROR:", err);
             setBookingsError(
@@ -621,23 +660,11 @@ function StudentDashboard({ profile, onLogout }) {
 
             const currentBookingId = bookingIdRef.current;
 
-
-
-            if (
-
-                currentBookingId &&
-
-                data.booking_id &&
-
-                Number(data.booking_id) !== Number(currentBookingId)
-
-            ) {
-
-                return;
-
+            // Completion may refer to a booking other than the last selected one.
+            if (data.booking_id) {
+                setBookingId(data.booking_id);
+                bookingIdRef.current = data.booking_id;
             }
-
-
 
             setBookingStatus("COMPLETED");
 
@@ -1782,6 +1809,8 @@ function StudentDashboard({ profile, onLogout }) {
 
 
             setFeedbackSubmitted(true);
+            setShowFeedbackPopup(false);
+            setPendingFeedbackBooking(null);
 
             await loadStudentBookings();
 
@@ -3821,19 +3850,42 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-            {bookingStatus === "COMPLETED" &&
-
+            {showFeedbackPopup && pendingFeedbackBooking &&
                 !feedbackSubmitted && (
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="session-feedback-title"
+                        style={{
+                            position: "fixed",
+                            inset: 0,
+                            zIndex: 10000,
+                            background: "rgba(15, 23, 42, 0.58)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "20px",
+                        }}
+                    >
+                    <div className="request-card" style={{
+                        width: "min(560px, 100%)",
+                        maxHeight: "90vh",
+                        overflowY: "auto",
+                        background: "#ffffff",
+                        borderRadius: "20px",
+                        padding: "28px",
+                        boxShadow: "0 24px 80px rgba(15, 23, 42, 0.28)",
+                    }}>
 
-                    <div className="request-card">
 
 
-
-                        <h2>
-
-                            Session Feedback
-
-                        </h2>
+                        <h2 id="session-feedback-title">Session Feedback</h2>
+                        <p style={{ marginTop: "-4px", color: "#64748b" }}>
+                            Booking #{pendingFeedbackBooking.booking_id}
+                            {(pendingFeedbackBooking.tutor_name || pendingFeedbackBooking.name)
+                                ? ` · Tutor: ${pendingFeedbackBooking.tutor_name || pendingFeedbackBooking.name}`
+                                : ""}
+                        </p>
 
 
 
@@ -3971,8 +4023,25 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
+                        <button
+                            type="button"
+                            onClick={() => setShowFeedbackPopup(false)}
+                            disabled={feedbackLoading}
+                            style={{
+                                marginTop: "12px",
+                                width: "100%",
+                                padding: "10px 14px",
+                                border: "1px solid #dbe2ee",
+                                borderRadius: "10px",
+                                background: "#ffffff",
+                                color: "#475569",
+                                cursor: feedbackLoading ? "not-allowed" : "pointer",
+                            }}
+                        >
+                            Remind me later
+                        </button>
                     </div>
-
+                    </div>
                 )}
 
 
