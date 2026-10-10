@@ -2121,7 +2121,10 @@ function StudentDashboard({ profile, onLogout }) {
 
     return (
 
-        <div className="dashboard-page">
+        <div
+            className="dashboard-page"
+            style={{ paddingTop: "82px", boxSizing: "border-box" }}
+        >
 
 
 
@@ -2234,15 +2237,21 @@ function StudentDashboard({ profile, onLogout }) {
                     display: "flex",
                     gap: "12px",
                     alignItems: "center",
+                    justifyContent: "center",
                     flexWrap: "wrap",
-                    margin: "20px 0",
+                    margin: "0",
                     padding: "14px 16px",
                     background: "#ffffff",
-                    borderRadius: "12px",
+                    borderRadius: "0 0 12px 12px",
                     boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
-                    position: "sticky",
-                    top: "10px",
-                    zIndex: 20
+                    position: "fixed",
+                    top: "0",
+                    left: "0",
+                    right: "auto",
+                    width: "100vw",
+                    maxWidth: "100vw",
+                    boxSizing: "border-box",
+                    zIndex: 1000
                 }}
             >
                 <button
@@ -2269,7 +2278,6 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={handleLogout}
-                    style={{ marginLeft: "auto" }}
                 >
                     🚪 Logout
                 </button>

@@ -1030,19 +1030,24 @@ function TutorDashboard({ profile, onLogout }) {
             <div
                 className="dashboard-nav"
                 style={{
-                    position: "sticky",
+                    position: "fixed",
                     top: 0,
-                    zIndex: 50,
+                    left: 0,
+                    right: 0,
+                    width: "100vw",
+                    maxWidth: "100vw",
+                    boxSizing: "border-box",
+                    zIndex: 1000,
                     display: "flex",
                     flexWrap: "wrap",
-                    gap: "10px",
+                    gap: "12px",
                     alignItems: "center",
                     justifyContent: "center",
-                    margin: "20px 0",
-                    padding: "12px",
+                    margin: 0,
+                    padding: "14px 16px",
                     background: "#ffffff",
-                    borderRadius: "14px",
-                    boxShadow: "0 8px 24px rgba(0,0,0,.08)"
+                    borderRadius: "0 0 12px 12px",
+                    boxShadow: "0 4px 14px rgba(0,0,0,0.08)"
                 }}
             >
                 <button
