@@ -1,7 +1,6 @@
 
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { io } from "socket.io-client";
 
@@ -2676,15 +2675,26 @@ function StudentDashboard({ profile, onLogout }) {
                                     color: "#344563",
                                     fontSize: "0.9rem",
                                 }}>
-                                    <span style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        padding: "7px 11px",
-                                        borderRadius: "999px",
-                                        background: String(booking.booking_status || "Not available").toUpperCase() === "COMPLETED" ? "#e8f8ef" : "#eef2ff",
-                                        color: String(booking.booking_status || "Not available").toUpperCase() === "COMPLETED" ? "#18794e" : "#4f46a5",
-                                        fontWeight: 600,
-                                    }}>
+                                    <span style={(() => {
+                                        const status = String(booking.booking_status || "Not available").toUpperCase();
+                                        // Confirmed and completed bookings share the green success styling.
+                                        // Pending, cancelled, and other states remain visually distinguishable.
+                                        const palette = ["CONFIRMED", "COMPLETED"].includes(status)
+                                            ? { background: "#e8f8ef", color: "#18794e" }
+                                            : ["PAYMENT_PENDING", "PENDING"].includes(status)
+                                                ? { background: "#fff4db", color: "#946200" }
+                                                : ["CANCELLED", "REJECTED"].includes(status)
+                                                    ? { background: "#fff0f0", color: "#b42318" }
+                                                    : { background: "#eef2ff", color: "#4f46a5" };
+                                        return {
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            padding: "7px 11px",
+                                            borderRadius: "999px",
+                                            fontWeight: 600,
+                                            ...palette,
+                                        };
+                                    })()}>
                                         <strong>Status:</strong>{" "}
                                         {booking.booking_status || "Not available"}
                                     </span>
@@ -2715,12 +2725,10 @@ function StudentDashboard({ profile, onLogout }) {
                                     return paymentDue ? (
                                         <button
                                             type="button"
-                                            onClick={(event) => {
-                                                event.preventDefault();
-                                                event.stopPropagation();
+                                            onClick={() => {
                                                 setSelectedBooking({
                                                     ...booking,
-                                                    amount: booking.amount ?? booking.price_per_session ?? booking.price ?? booking.total_amount,
+                                                    amount: booking.amount ?? booking.price_per_session,
                                                 });
                                                 setBookingId(booking.booking_id);
                                                 bookingIdRef.current = booking.booking_id;
@@ -3527,7 +3535,7 @@ function StudentDashboard({ profile, onLogout }) {
 
 
 
-            {createPortal(showPaymentPopup && selectedBooking ? (
+            {showPaymentPopup && selectedBooking && (
 
                 <div className="payment-modal-overlay">
 
@@ -3735,7 +3743,7 @@ function StudentDashboard({ profile, onLogout }) {
 
                 </div>
 
-            ) : null, document.body)}
+            )}
 
 
 

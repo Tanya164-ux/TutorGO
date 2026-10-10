@@ -85,6 +85,13 @@ function TutorDashboard({ profile, onLogout }) {
             ? currentProfile.expertise
             : {};
 
+
+    // Completed bookings form the tutor's session history.
+    const completedSessions = bookings.filter((booking) =>
+        String(booking.booking_status || booking.status || "")
+            .toUpperCase() === "COMPLETED"
+    );
+
     // Keep local profile data synchronized with the parent profile
     useEffect(() => {
         setCurrentProfile(profile || {});
@@ -1094,6 +1101,28 @@ function TutorDashboard({ profile, onLogout }) {
 
                 <button
                     type="button"
+                    onClick={() => navigateToSection("history-section")}
+                    style={{
+                        padding: "11px 18px",
+                        borderRadius: "10px",
+                        border: "1px solid #e4e7ec",
+                        background:
+                            activeSection === "history-section"
+                                ? "#111827"
+                                : "#ffffff",
+                        color:
+                            activeSection === "history-section"
+                                ? "#ffffff"
+                                : "#374151",
+                        cursor: "pointer",
+                        fontWeight: 600
+                    }}
+                >
+                    🕘 Session History
+                </button>
+
+                <button
+                    type="button"
                     onClick={() => navigateToSection("profile-section")}
                     style={{
                         padding: "11px 18px",
@@ -1958,6 +1987,95 @@ function TutorDashboard({ profile, onLogout }) {
                             </div>
                         ))}
 
+                    </div>
+                )}
+            </div>
+
+            {/* =========================================
+                SESSION HISTORY — COMPLETED SESSIONS
+            ========================================= */}
+
+            <div
+                id="history-section"
+                className="dashboard-section"
+                style={{ scrollMarginTop: "90px" }}
+            >
+                <div className="section-title">
+                    <div>
+                        <span>07</span>
+                        <h2>Session History</h2>
+                    </div>
+                    <span className="saved-badge">
+                        {completedSessions.length} {completedSessions.length === 1 ? "Completed Session" : "Completed Sessions"}
+                    </span>
+                </div>
+
+                <p style={{ color: "#667085", marginTop: "-4px", marginBottom: "20px" }}>
+                    A record of tutoring sessions marked as completed.
+                </p>
+
+                {loadingBookings ? (
+                    <div className="empty-state">Loading session history...</div>
+                ) : completedSessions.length === 0 ? (
+                    <div className="empty-state">
+                        <div className="empty-icon">🗂️</div>
+                        <h3>No completed sessions yet</h3>
+                        <p>Completed tutoring sessions will appear here after their status is updated.</p>
+                    </div>
+                ) : (
+                    <div className="request-list">
+                        {completedSessions
+                            .slice()
+                            .sort((a, b) => {
+                                const dateA = new Date(a.start_time || 0).getTime();
+                                const dateB = new Date(b.start_time || 0).getTime();
+                                return dateB - dateA;
+                            })
+                            .map((booking) => (
+                                <div className="request-card" key={`history-${booking.booking_id}`}>
+                                    <div className="request-top">
+                                        <div>
+                                            <span className="request-id">BOOKING #{booking.booking_id}</span>
+                                            <h3>{booking.student_name || `Student #${booking.student_id}`}</h3>
+                                        </div>
+                                        <span className={getStatusClass(booking.booking_status || booking.status)}>
+                                            {booking.booking_status || booking.status || "COMPLETED"}
+                                        </span>
+                                    </div>
+
+                                    <div className="request-details">
+                                        <div>
+                                            <span>REQUEST ID</span>
+                                            <strong>{booking.request_id || "—"}</strong>
+                                        </div>
+                                        <div>
+                                            <span>STUDENT ID</span>
+                                            <strong>{booking.student_id || "—"}</strong>
+                                        </div>
+                                        <div>
+                                            <span>PRICE</span>
+                                            <strong>₹{booking.price_per_session ?? currentProfile.price_per_session ?? "—"}</strong>
+                                        </div>
+                                        <div>
+                                            <span>START TIME</span>
+                                            <strong>{formatDateTime(booking.start_time)}</strong>
+                                        </div>
+                                        <div>
+                                            <span>END TIME</span>
+                                            <strong>{formatDateTime(booking.end_time)}</strong>
+                                        </div>
+                                    </div>
+
+                                    {booking.payment_status && (
+                                        <div className="slot-info">
+                                            <div>
+                                                <span>PAYMENT STATUS</span>
+                                                <strong>{booking.payment_status}</strong>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
                     </div>
                 )}
             </div>
