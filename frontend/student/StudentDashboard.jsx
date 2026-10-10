@@ -2242,6 +2242,7 @@ function StudentDashboard({ profile, onLogout }) {
                     display: "flex",
                     gap: "12px",
                     alignItems: "center",
+                    justifyContent: "center",
                     flexWrap: "wrap",
                     margin: "0",
                     padding: "14px 16px",
@@ -2281,7 +2282,6 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={handleLogout}
-                    style={{ marginLeft: "auto" }}
                 >
                     🚪 Logout
                 </button>
