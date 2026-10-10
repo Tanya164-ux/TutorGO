@@ -496,6 +496,11 @@ function StudentDashboard({ profile, onLogout }) {
 
                 setError("");
 
+                // Refresh the persisted booking as soon as the tutor accepts.
+                // A second refresh handles a brief DB commit/event timing race.
+                loadStudentBookings();
+                window.setTimeout(() => loadStudentBookings(), 800);
+
             }
 
 
@@ -2237,7 +2242,6 @@ function StudentDashboard({ profile, onLogout }) {
                     display: "flex",
                     gap: "12px",
                     alignItems: "center",
-                    justifyContent: "center",
                     flexWrap: "wrap",
                     margin: "0",
                     padding: "14px 16px",
@@ -2247,9 +2251,8 @@ function StudentDashboard({ profile, onLogout }) {
                     position: "fixed",
                     top: "0",
                     left: "0",
-                    right: "auto",
-                    width: "100vw",
-                    maxWidth: "100vw",
+                    right: "0",
+                    width: "100%",
                     boxSizing: "border-box",
                     zIndex: 1000
                 }}
@@ -2278,6 +2281,7 @@ function StudentDashboard({ profile, onLogout }) {
                 <button
                     type="button"
                     onClick={handleLogout}
+                    style={{ marginLeft: "auto" }}
                 >
                     🚪 Logout
                 </button>
@@ -2559,56 +2563,150 @@ function StudentDashboard({ profile, onLogout }) {
                 ) : studentBookings.length === 0 ? (
                     <p>No sessions found yet.</p>
                 ) : (
-                    <div className="session-history-list">
+                    <div
+                        className="session-history-list"
+                        style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))",
+                            gap: "20px",
+                            alignItems: "stretch",
+                            marginTop: "22px",
+                        }}
+                    >
                         {studentBookings.map((booking) => (
                             <div
                                 className="session-history-item"
                                 key={booking.booking_id}
+                                style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    justifyContent: "space-between",
+                                    gap: "18px",
+                                    minWidth: 0,
+                                    padding: "22px",
+                                    border: "1px solid #e3e8f3",
+                                    borderRadius: "18px",
+                                    background: "linear-gradient(145deg, #ffffff 0%, #f8faff 100%)",
+                                    boxShadow: "0 8px 24px rgba(28, 45, 90, 0.07)",
+                                    transition: "transform 160ms ease, box-shadow 160ms ease",
+                                }}
                             >
                                 <div className="session-history-main">
-                                    <h3>
+                                    <h3 style={{
+                                        margin: "0 0 16px",
+                                        color: "#172b4d",
+                                        fontSize: "1.15rem",
+                                        lineHeight: 1.35,
+                                        overflowWrap: "anywhere",
+                                    }}>
                                         {booking.tutor_name || "Tutor not available"}
                                     </h3>
 
-                                    <p>
-                                        <strong>Booking ID:</strong>{" "}
+                                    <p style={{ margin: "10px 0", color: "#4b5872", fontSize: "0.96rem", lineHeight: 1.5 }}>
+                                        <strong style={{ color: "#243653" }}>Booking ID:</strong>{" "}
                                         {booking.booking_id}
                                     </p>
 
-                                    <p>
-                                        <strong>Date:</strong>{" "}
+                                    <p style={{ margin: "10px 0", color: "#4b5872", fontSize: "0.96rem", lineHeight: 1.5 }}>
+                                        <strong style={{ color: "#243653" }}>Date:</strong>{" "}
                                         {formatDate(booking.start_time) || "Not available"}
                                     </p>
 
-                                    <p>
-                                        <strong>Time:</strong>{" "}
+                                    <p style={{ margin: "10px 0", color: "#4b5872", fontSize: "0.96rem", lineHeight: 1.5 }}>
+                                        <strong style={{ color: "#243653" }}>Time:</strong>{" "}
                                         {formatTime(booking.start_time)}
                                         {booking.end_time
                                             ? ` - ${formatTime(booking.end_time)}`
                                             : ""}
                                     </p>
 
-                                    <p>
-                                        <strong>Price:</strong>{" "}
+                                    <p style={{ margin: "10px 0", color: "#4b5872", fontSize: "0.96rem", lineHeight: 1.5 }}>
+                                        <strong style={{ color: "#243653" }}>Price:</strong>{" "}
                                         {booking.price_per_session != null
                                             ? `₹${booking.price_per_session}`
                                             : "Not available"}
                                     </p>
                                 </div>
 
-                                <div className="session-history-status">
-                                    <span>
+                                <div className="session-history-status" style={{
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    alignItems: "center",
+                                    gap: "8px",
+                                    paddingTop: "14px",
+                                    borderTop: "1px solid #e8edf6",
+                                    color: "#344563",
+                                    fontSize: "0.9rem",
+                                }}>
+                                    <span style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        padding: "7px 11px",
+                                        borderRadius: "999px",
+                                        background: String(booking.booking_status || "Not available").toUpperCase() === "COMPLETED" ? "#e8f8ef" : "#eef2ff",
+                                        color: String(booking.booking_status || "Not available").toUpperCase() === "COMPLETED" ? "#18794e" : "#4f46a5",
+                                        fontWeight: 600,
+                                    }}>
                                         <strong>Status:</strong>{" "}
                                         {booking.booking_status || "Not available"}
                                     </span>
 
                                     {booking.payment_status && (
-                                        <span>
-                                            <strong>Payment:</strong>{" "}
+                                        <span style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            padding: "7px 11px",
+                                            borderRadius: "999px",
+                                            background: String(booking.payment_status).toUpperCase() === "SUCCESS" ? "#e8f8ef" : "#f0f5ff",
+                                            color: String(booking.payment_status).toUpperCase() === "SUCCESS" ? "#18794e" : "#3c5a91",
+                                            fontWeight: 500,
+                                        }}>
+                                            <strong style={{ marginRight: "4px" }}>Payment:</strong>{" "}
                                             {booking.payment_status}
                                         </span>
                                     )}
                                 </div>
+
+                                {(() => {
+                                    const bookingState = String(booking.booking_status || "").toUpperCase();
+                                    const paymentState = String(booking.payment_status || "").toUpperCase();
+                                    const paymentDue =
+                                        ["PAYMENT_PENDING", "PENDING", "ACCEPTED", "TUTOR_ACCEPTED"].includes(bookingState) ||
+                                        ["PENDING", "FAILED"].includes(paymentState);
+
+                                    return paymentDue ? (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedBooking({
+                                                    ...booking,
+                                                    amount: booking.amount ?? booking.price_per_session,
+                                                });
+                                                setBookingId(booking.booking_id);
+                                                bookingIdRef.current = booking.booking_id;
+                                                setBookingStatus(booking.booking_status || "PAYMENT_PENDING");
+                                                setPaymentReference("");
+                                                setPaymentMethod("DEMO");
+                                                setError("");
+                                                setShowPaymentPopup(true);
+                                            }}
+                                            style={{
+                                                width: "100%",
+                                                marginTop: "2px",
+                                                padding: "12px 16px",
+                                                border: "none",
+                                                borderRadius: "11px",
+                                                background: "linear-gradient(135deg, #6254c7, #4f46a5)",
+                                                color: "#ffffff",
+                                                fontWeight: 700,
+                                                fontSize: "0.95rem",
+                                                cursor: "pointer",
+                                            }}
+                                        >
+                                            Complete Demo Payment
+                                        </button>
+                                    ) : null;
+                                })()}
                             </div>
                         ))}
                     </div>
